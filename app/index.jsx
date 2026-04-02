@@ -1,3 +1,4 @@
+import { loginRequest } from '../services/api';
 import React, { useState } from 'react';
 import {
   View,
@@ -16,7 +17,7 @@ import { useRouter } from 'expo-router';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import { colors, spacing, borderRadius, typography, shadows } from '../constants/theme';
-import { router } from 'expo-router';
+
 
 const HERO_IMAGE = 'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&h=1000&fit=crop&auto=format';
 
@@ -27,12 +28,7 @@ const USER_ROLES = {
   CASASHOW: 'CASASHOW',
 };
 
-const mockUsers = {
-  'cliente@nightout.com': { password: '123456', role: USER_ROLES.CLIENTE, name: 'Cliente' },
-  'artista@nightout.com': { password: '123456', role: USER_ROLES.ARTISTA, name: 'Artista' },
-  'admin@nightout.com': { password: '123456', role: USER_ROLES.ADMINISTRADOR, name: 'Admin' },
-  'casa@nightout.com': { password: '123456', role: USER_ROLES.CASASHOW, name: 'Casa Show' },
-};
+
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -43,40 +39,46 @@ export default function LoginScreen() {
   const [selectedRole, setSelectedRole] = useState(USER_ROLES.ADMINISTRADOR);
   const [emailError, setEmailError] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
+  const [apiError, setApiError] = useState('');
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  const handleLogin = async () => {
-    setEmailError(false);
-    setPasswordError(false);
+    const handleLogin = async () => {
+  setEmailError(false);
+  setPasswordError(false);
+  setApiError('');
 
-    if (!email || !validateEmail(email)) {
-      setEmailError(true);
-      return;
-    }
+  if (!email || !validateEmail(email)) {
+    setEmailError(true);
+    setApiError('Informe um email válido.');
+    return;
+  }
 
-    if (!password || password.length < 6) {
-      setPasswordError(true);
-      return;
-    }
+  if (!password || password.length < 6) {
+    setPasswordError(true);
+    setApiError('A senha deve ter pelo menos 6 caracteres.');
+    return;
+  }
 
+  try {
     setLoading(true);
 
-    setTimeout(() => {
-      const user = mockUsers[email.toLowerCase()];
+    await loginRequest({
+      email: email.trim().toLowerCase(),
+      senha: password,
+    });
 
-      if (user && user.password === password) {
-        console.log(`Login bem-sucedido! Perfil: ${user.role}`);
-      } else {
-        setPasswordError(true);
-      }
+    router.replace('/(tabs)');
+  } catch (error) {
+    setApiError(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
-      setLoading(false);
-    }, 1500);
-  };
 
   const getRoleDisplay = () => {
     switch (selectedRole) {
@@ -140,8 +142,9 @@ export default function LoginScreen() {
                   placeholder="SeuEmail@gmail.com"
                   value={email}
                   onChangeText={(text) => {
-                    setEmail(text);
-                    setEmailError(false);
+                  setEmail(text);
+                  setEmailError(false);
+                  setApiError('');
                   }}
                   keyboardType="email-address"
                   error={emailError}
@@ -154,10 +157,11 @@ export default function LoginScreen() {
                   icon={Lock}
                   placeholder="Senha"
                   value={password}
-                  onChangeText={(text) => {
-                    setPassword(text);
-                    setPasswordError(false);
-                  }}
+                 onChangeText={(text) => {
+                 setPassword(text);
+                 setPasswordError(false);
+                 setApiError('');
+                 }}
                   secureTextEntry
                   error={passwordError}
                 />
@@ -170,6 +174,9 @@ export default function LoginScreen() {
                 style={styles.loginButton}
               />
 
+              {apiError ? (
+              <Text style={styles.apiErrorText}>{apiError}</Text>) : null}
+              
               <TouchableOpacity
                 style={styles.checkboxContainer}
                 onPress={() => setRememberMe(!rememberMe)}
@@ -370,4 +377,10 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
+  apiErrorText: {
+  ...typography.bodySmall,
+  color: '#FF6B6B',
+  marginTop: spacing.sm,
+  textAlign: 'center',
+},
 });
