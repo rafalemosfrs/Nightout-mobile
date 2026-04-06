@@ -16,9 +16,9 @@ import { useRouter } from 'expo-router';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import { colors, spacing, borderRadius, typography, shadows } from '../constants/theme';
-import { router } from 'expo-router';
 
-const HERO_IMAGE = 'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&h=1000&fit=crop&auto=format';
+const HERO_IMAGE =
+  'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&h=1000&fit=crop&auto=format';
 
 const USER_ROLES = {
   CLIENTE: 'CLIENTE',
@@ -28,10 +28,26 @@ const USER_ROLES = {
 };
 
 const mockUsers = {
-  'cliente@nightout.com': { password: '123456', role: USER_ROLES.CLIENTE, name: 'Cliente' },
-  'artista@nightout.com': { password: '123456', role: USER_ROLES.ARTISTA, name: 'Artista' },
-  'admin@nightout.com': { password: '123456', role: USER_ROLES.ADMINISTRADOR, name: 'Admin' },
-  'casa@nightout.com': { password: '123456', role: USER_ROLES.CASASHOW, name: 'Casa Show' },
+  'cliente@nightout.com': {
+    password: '123456',
+    role: USER_ROLES.CLIENTE,
+    name: 'Cliente',
+  },
+  'artista@nightout.com': {
+    password: '123456',
+    role: USER_ROLES.ARTISTA,
+    name: 'Artista',
+  },
+  'admin@nightout.com': {
+    password: '123456',
+    role: USER_ROLES.ADMINISTRADOR,
+    name: 'Admin',
+  },
+  'casa@nightout.com': {
+    password: '123456',
+    role: USER_ROLES.CASASHOW,
+    name: 'Casa Show',
+  },
 };
 
 export default function LoginScreen() {
@@ -40,7 +56,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState(USER_ROLES.ADMINISTRADOR);
+  const [selectedRole, setSelectedRole] = useState(USER_ROLES.CLIENTE);
   const [emailError, setEmailError] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
 
@@ -69,7 +85,15 @@ export default function LoginScreen() {
       const user = mockUsers[email.toLowerCase()];
 
       if (user && user.password === password) {
-        console.log(`Login bem-sucedido! Perfil: ${user.role}`);
+        if (user.role === USER_ROLES.CLIENTE) {
+          router.replace('/(tabs)');
+        } else if (user.role === USER_ROLES.ARTISTA) {
+          router.replace('/(tabs)/events');
+        } else if (user.role === USER_ROLES.CASASHOW) {
+          router.replace('/(tabs)/venues');
+        } else {
+          router.replace('/(tabs)/profile');
+        }
       } else {
         setPasswordError(true);
       }
@@ -205,9 +229,12 @@ export default function LoginScreen() {
 
               <View style={styles.registerContainer}>
                 <Text style={styles.registerText}>Não possui uma conta? </Text>
-<TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/register')}>
-  <Text style={styles.registerLink}>Registre-se</Text>
-</TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => router.push('/register')}
+                >
+                  <Text style={styles.registerLink}>Registre-se</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
