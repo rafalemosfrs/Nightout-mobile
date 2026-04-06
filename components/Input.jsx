@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, View, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -10,6 +10,8 @@ export default function Input({
   value,
   onChangeText,
 }) {
+  const [isSecure, setIsSecure] = useState(secureTextEntry);
+
   return (
     <View style={styles.wrapper}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
@@ -19,15 +21,15 @@ export default function Input({
           style={styles.input}
           placeholder={placeholder}
           placeholderTextColor="#7C8395"
-          secureTextEntry={secureTextEntry}
+          secureTextEntry={isSecure}
           keyboardType={keyboardType}
           value={value}
           onChangeText={onChangeText}
         />
 
         {secureTextEntry ? (
-          <TouchableOpacity activeOpacity={0.7}>
-            <Ionicons name="eye-outline" size={20} color="#7C8395" />
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setIsSecure(!isSecure)}>
+            <Ionicons name={isSecure ? "eye-outline" : "eye-off-outline"} size={20} color="#7C8395" />
           </TouchableOpacity>
         ) : null}
       </View>
