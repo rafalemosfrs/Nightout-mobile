@@ -1,5 +1,5 @@
-import { loginRequest } from '../services/api';
 import React, { useState } from 'react';
+import { loginRequest } from '../services/api';
 import {
   View,
   Text,
@@ -69,6 +69,7 @@ export default function LoginScreen() {
     await loginRequest({
       email: email.trim().toLowerCase(),
       senha: password,
+      role: selectedRole,
     });
 
     router.replace('/(tabs)');
