@@ -29,7 +29,7 @@ export default function Input({
 
         {secureTextEntry ? (
           <TouchableOpacity activeOpacity={0.7} onPress={() => setIsSecure(!isSecure)}>
-            <Ionicons name={isSecure ? "eye-outline" : "eye-off-outline"} size={20} color="#7C8395" />
+            <Ionicons name={isSecure ? "eye-off-outline" : "eye-outline"} size={20} color="#7C8395" />
           </TouchableOpacity>
         ) : null}
       </View>

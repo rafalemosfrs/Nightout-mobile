@@ -28,7 +28,7 @@ export default function RegisterCasaShowScreen() {
 
     const cleanedTelefone = telefone.replace(/\D/g, '');
     if (!telefone.trim()) newErrors.telefone = 'Telefone é obrigatório';
-    else if (cleanedTelefone.length < 10 || cleanedTelefone.length > 11) newErrors.telefone = 'Telefone inválido (DDD + número)';
+    else if (cleanedTelefone.length < 10 || cleanedTelefone.length > 15) newErrors.telefone = 'Telefone inválido (DDD + número)';
 
     if (!senha || senha.length < 6) newErrors.senha = 'A senha deve ter pelo menos 6 caracteres';
     if (!capacidade.trim() || isNaN(capacidade)) newErrors.capacidade = 'Capacidade inválida (apenas números)';
