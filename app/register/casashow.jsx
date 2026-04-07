@@ -19,17 +19,9 @@ export default function RegisterCasaShowScreen() {
   const validate = () => {
     const newErrors = {};
     if (!nomeCasa.trim()) newErrors.nomeCasa = 'Nome da casa é obrigatório';
-    
-    const cleanedCnpj = cnpj.replace(/\D/g, '');
     if (!cnpj.trim()) newErrors.cnpj = 'CNPJ é obrigatório';
-    else if (cleanedCnpj.length !== 14) newErrors.cnpj = 'CNPJ inválido (deve ter 14 dígitos)';
-
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) newErrors.email = 'Email inválido';
-
-    const cleanedTelefone = telefone.replace(/\D/g, '');
     if (!telefone.trim()) newErrors.telefone = 'Telefone é obrigatório';
-    else if (cleanedTelefone.length < 10 || cleanedTelefone.length > 15) newErrors.telefone = 'Telefone inválido (DDD + número)';
-
     if (!senha || senha.length < 6) newErrors.senha = 'A senha deve ter pelo menos 6 caracteres';
     if (!capacidade.trim() || isNaN(capacidade)) newErrors.capacidade = 'Capacidade inválida (apenas números)';
     if (!endereco.trim()) newErrors.endereco = 'Endereço é obrigatório';

@@ -71,7 +71,7 @@ export default function LoginScreen() {
       senha: password,
     });
 
-    router.replace('/(tabs)');
+    router.replace('/tabs');
   } catch (error) {
     setApiError(error.message);
   } finally {
@@ -80,18 +80,18 @@ export default function LoginScreen() {
 };
 
 
-  const getRoleDisplay = () => {
-    switch (selectedRole) {
-      case USER_ROLES.ADMINISTRADOR:
-        return 'Admin';
-      case USER_ROLES.ARTISTA:
-        return 'Artista';
-      case USER_ROLES.CASASHOW:
-        return 'Casa Show';
-      default:
-        return 'Cliente';
-    }
-  };
+  // const getRoleDisplay = () => {
+  //   switch (selectedRole) {
+  //     case USER_ROLES.ADMINISTRADOR:
+  //       return 'Admin';
+  //     case USER_ROLES.ARTISTA:
+  //       return 'Artista';
+  //     case USER_ROLES.CASASHOW:
+  //       return 'Casa Show';
+  //     default:
+  //       return 'Cliente';
+  //   }
+  // };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -114,7 +114,7 @@ export default function LoginScreen() {
               style={styles.heroOverlay}
             >
               <View style={styles.heroContent}>
-                <Text style={styles.heroTitle}>Bem-vindo ao NightOut</Text>
+                <Text style={styles.heroTitle}>NightOut</Text>
                 <Text style={styles.heroSubtitle}>
                   A plataforma completa para gerenciar sua vida noturna
                 </Text>
@@ -188,33 +188,11 @@ export default function LoginScreen() {
                 <Text style={styles.checkboxLabel}>Lembrar de mim</Text>
               </TouchableOpacity>
 
-              <View style={styles.roleContainer}>
-                <TouchableOpacity
-                  style={styles.rolePill}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    const roles = Object.values(USER_ROLES);
-                    const currentIndex = roles.indexOf(selectedRole);
-                    const nextIndex = (currentIndex + 1) % roles.length;
-                    setSelectedRole(roles[nextIndex]);
-                  }}
-                >
-                  <LinearGradient
-                    colors={[colors.secondary, '#C77DFF']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.rolePillGradient}
-                  >
-                    <Text style={styles.rolePillText}>{getRoleDisplay()}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-
               <View style={styles.registerContainer}>
                 <Text style={styles.registerText}>Não possui uma conta? </Text>
-<TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/register')}>
-  <Text style={styles.registerLink}>Registre-se</Text>
-</TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/register')}>
+                    <Text style={styles.registerLink}>Registre-se</Text>
+                  </TouchableOpacity>
               </View>
             </View>
           </View>
