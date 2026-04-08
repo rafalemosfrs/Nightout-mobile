@@ -36,12 +36,26 @@ const MONTH_NAMES = [
   'Dezembro',
 ];
 
-const dashboardMock = {
-  casaShow: {
-    id: 'casa-show-001',
-    nome: 'Living Music Hall',
-    tipo: 'CASA DE SHOW',
+const casaDeShowMock = {
+  id_usuario: 'casa-show-001',
+  nome_fantasia: 'Living Music Hall',
+  cnpj: '12.345.678/0001-90',
+  capacidade: '1200',
+  endereco: 'Av. Beira Mar, 1200',
+  bairro: 'Meireles',
+  estado: 'CE',
+  cep: '60165-121',
+  geo_lat: '-3.7319',
+  geo_lng: '-38.5267',
+  usuario: {
+    nome: 'Living Entretenimento',
+    email: 'contato@living.com',
+    telefone: '+55 85 99999-0000',
+    tipo: 'CASASHOW',
   },
+};
+
+const dashboardUiMock = {
   resumo: {
     eventosCasa: 12,
     proximosEventos: 4,
@@ -50,9 +64,9 @@ const dashboardMock = {
   },
   proximoEvento: {
     id: 'evt-next-1',
-    nome: 'Noite do Piseiro',
+    titulo: 'Noite do Piseiro',
     data: '24 de Fevereiro • 22:00',
-    local: 'Av. Beira Mar, 1200 • Fortaleza',
+    local: 'Av. Beira Mar, 1200 • Meireles',
   },
   propostasCasa: [
     {
@@ -134,50 +148,47 @@ const dashboardMock = {
   },
 };
 
-function normalizeCasaShowDashboardResponse(payload = {}) {
+function normalizeCasaDeShowPayload(payload = {}) {
   return {
-    casaShow: {
-      id: payload?.casaShow?.id || 'casa-show-001',
-      nome: payload?.casaShow?.nome || 'Living Music Hall',
-      tipo: payload?.casaShow?.tipo || 'CASA DE SHOW',
+    id_usuario: payload?.id_usuario || '',
+    nome_fantasia: payload?.nome_fantasia || '',
+    cnpj: payload?.cnpj || '',
+    capacidade: payload?.capacidade || '',
+    endereco: payload?.endereco || '',
+    bairro: payload?.bairro || '',
+    estado: payload?.estado || '',
+    cep: payload?.cep || '',
+    geo_lat: payload?.geo_lat || '',
+    geo_lng: payload?.geo_lng || '',
+    usuario: {
+      nome: payload?.usuario?.nome || '',
+      email: payload?.usuario?.email || '',
+      telefone: payload?.usuario?.telefone || '',
+      tipo: payload?.usuario?.tipo || 'CASASHOW',
     },
-    resumo: {
-      eventosCasa: payload?.resumo?.eventosCasa || 0,
-      proximosEventos: payload?.resumo?.proximosEventos || 0,
-      propostasEnviadas: payload?.resumo?.propostasEnviadas || 0,
-      propostasAceitas: payload?.resumo?.propostasAceitas || 0,
-    },
-    proximoEvento: payload?.proximoEvento || null,
-    propostasCasa: Array.isArray(payload?.propostasCasa) ? payload.propostasCasa : [],
-    calendario: {
-      mes: payload?.calendario?.mes || 2,
-      ano: payload?.calendario?.ano || 2026,
-      diaSelecionado: payload?.calendario?.diaSelecionado || 24,
-      diasComEvento: Array.isArray(payload?.calendario?.diasComEvento)
-        ? payload.calendario.diasComEvento
-        : [],
-      eventosPorDia:
-        payload?.calendario?.eventosPorDia &&
-        typeof payload.calendario.eventosPorDia === 'object'
-          ? payload.calendario.eventosPorDia
-          : {},
-    },
+  };
+}
+
+function buildDashboardData(casaPayload) {
+  const casa = normalizeCasaDeShowPayload(casaPayload);
+
+  return {
+    casa,
+    resumo: dashboardUiMock.resumo,
+    proximoEvento: dashboardUiMock.proximoEvento,
+    propostasCasa: dashboardUiMock.propostasCasa,
+    calendario: dashboardUiMock.calendario,
   };
 }
 
 async function getCasaShowDashboardData() {
   if (USE_MOCK) {
-    return normalizeCasaShowDashboardResponse(dashboardMock);
+    return buildDashboardData(casaDeShowMock);
   }
 
-  /*
-    Quando for integrar depois:
-    1. faz o fetch aqui
-    2. recebe o payload da API
-    3. retorna normalizeCasaShowDashboardResponse(payload)
-  */
+/* a integração tu faz aq @diego, n esquece de tirar os mocks*/
 
-  return normalizeCasaShowDashboardResponse(dashboardMock);
+  return buildDashboardData(casaDeShowMock);
 }
 
 function buildCalendarMatrix(month, year) {
@@ -204,6 +215,12 @@ function buildCalendarMatrix(month, year) {
   }
 
   return weeks;
+}
+
+function getStatusStyle(status) {
+  return status === 'Aceita' || status === 'Confirmado'
+    ? styles.statusSuccess
+    : styles.statusPending;
 }
 
 export default function CasaShowDashboardScreen() {
@@ -257,6 +274,8 @@ export default function CasaShowDashboardScreen() {
       </SafeAreaView>
     );
   }
+
+  const { casa } = dashboard;
 
   const summaryCards = [
     {
@@ -321,10 +340,10 @@ export default function CasaShowDashboardScreen() {
           </View>
 
           <View style={styles.heroInfo}>
-            <Text style={styles.heroTitle}>{dashboard.casaShow.nome}</Text>
-            <Text style={styles.heroSubtitle}>{dashboard.casaShow.tipo}</Text>
+            <Text style={styles.heroTitle}>{casa.nome_fantasia || 'Casa de Show'}</Text>
+            <Text style={styles.heroSubtitle}>{casa.usuario.tipo}</Text>
             <Text style={styles.heroSecondaryText}>
-              Visão geral dos eventos e propostas da casa
+              {casa.bairro} • {casa.estado}
             </Text>
           </View>
         </View>
@@ -347,13 +366,79 @@ export default function CasaShowDashboardScreen() {
 
         <View style={styles.infoCard}>
           <View style={styles.sectionHeader}>
+            <Ionicons name="business-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Dados da casa</Text>
+          </View>
+
+          <View style={styles.detailGrid}>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>ID do usuário</Text>
+              <Text style={styles.detailValue}>{casa.id_usuario}</Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Nome fantasia</Text>
+              <Text style={styles.detailValue}>{casa.nome_fantasia}</Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Responsável</Text>
+              <Text style={styles.detailValue}>{casa.usuario.nome}</Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Email</Text>
+              <Text style={styles.detailValue}>{casa.usuario.email}</Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Telefone</Text>
+              <Text style={styles.detailValue}>{casa.usuario.telefone || 'Não informado'}</Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>CNPJ</Text>
+              <Text style={styles.detailValue}>{casa.cnpj}</Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Capacidade</Text>
+              <Text style={styles.detailValue}>{casa.capacidade} pessoas</Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>CEP</Text>
+              <Text style={styles.detailValue}>{casa.cep}</Text>
+            </View>
+
+            <View style={styles.detailItemFull}>
+              <Text style={styles.detailLabel}>Endereço</Text>
+              <Text style={styles.detailValue}>
+                {casa.endereco}, {casa.bairro} - {casa.estado}
+              </Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Latitude</Text>
+              <Text style={styles.detailValue}>{casa.geo_lat}</Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Longitude</Text>
+              <Text style={styles.detailValue}>{casa.geo_lng}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.infoCard}>
+          <View style={styles.sectionHeader}>
             <Ionicons name="calendar-outline" size={18} color={colors.primary} />
             <Text style={styles.sectionTitle}>Próximo evento da casa</Text>
           </View>
 
           {dashboard.proximoEvento ? (
             <View style={styles.nextEventCard}>
-              <Text style={styles.nextEventTitle}>{dashboard.proximoEvento.nome}</Text>
+              <Text style={styles.nextEventTitle}>{dashboard.proximoEvento.titulo}</Text>
               <Text style={styles.nextEventText}>{dashboard.proximoEvento.data}</Text>
               <Text style={styles.nextEventText}>{dashboard.proximoEvento.local}</Text>
             </View>
@@ -380,14 +465,7 @@ export default function CasaShowDashboardScreen() {
                   <Text style={styles.proposalSubtitle}>{proposta.data}</Text>
                 </View>
 
-                <View
-                  style={[
-                    styles.statusBadge,
-                    proposta.status === 'Aceita'
-                      ? styles.statusSuccess
-                      : styles.statusPending,
-                  ]}
-                >
+                <View style={[styles.statusBadge, getStatusStyle(proposta.status)]}>
                   <Text style={styles.statusText}>{proposta.status}</Text>
                 </View>
               </View>
@@ -473,14 +551,7 @@ export default function CasaShowDashboardScreen() {
                     </Text>
                   </View>
 
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      evento.status === 'Confirmado'
-                        ? styles.statusSuccess
-                        : styles.statusPending,
-                    ]}
-                  >
+                  <View style={[styles.statusBadge, getStatusStyle(evento.status)]}>
                     <Text style={styles.statusText}>{evento.status}</Text>
                   </View>
                 </View>
@@ -646,6 +717,38 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '700',
     marginLeft: 8,
+  },
+  detailGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  detailItem: {
+    width: '48%',
+    backgroundColor: '#101728',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+  },
+  detailItemFull: {
+    width: '100%',
+    backgroundColor: '#101728',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+  },
+  detailLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginBottom: 6,
+  },
+  detailValue: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
   },
   nextEventCard: {
     backgroundColor: '#101728',

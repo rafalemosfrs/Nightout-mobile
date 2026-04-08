@@ -71,7 +71,7 @@ export default function LoginScreen() {
       senha: password,
     });
 
-    router.replace('/tabs');
+    router.replace('/dashboards/casashow');
   } catch (error) {
     setApiError(error.message);
   } finally {
