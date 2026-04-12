@@ -39,8 +39,9 @@ export function registerClientRequest(payload) {
 }
 
 export function registerArtistRequest(payload) {
-  return request(USER_API_BASE_URL, '/artista/cadastro', {
-    method: 'POST',
+  return request("/artista/cadastro", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }
+
