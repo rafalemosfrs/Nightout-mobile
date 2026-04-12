@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
+import { registerArtistRequest } from '../../services/api';
 
 export default function RegisterArtistScreen() {
   const [nomeCompleto, setNomeCompleto] = useState('');
@@ -14,20 +15,68 @@ export default function RegisterArtistScreen() {
   const [generoMusical, setGeneroMusical] = useState('');
   const [cacheMinimo, setCacheMinimo] = useState('');
   const [preferencias, setPreferencias] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
 
-  const handleCreateAccount = () => {
-    const payload = {
-      nomeCompleto,
-      email,
-      telefone,
+  const validateEmail = (valor) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(valor);
+  };
+
+  const handleCreateAccount = async () => {
+    setApiError('');
+
+    if (!nomeCompleto.trim()) {
+      setApiError('Informe seu nome completo.');
+      return;
+    }
+
+    if (!email.trim() || !validateEmail(email)) {
+      setApiError('Informe um email válido.');
+      return;
+    }
+
+    if (!senha || senha.length < 6) {
+      setApiError('A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    if (!nomeArtistico.trim()) {
+      setApiError('Informe seu nome artístico.');
+      return;
+    }
+
+    if (!generoMusical.trim()) {
+      setApiError('Informe o gênero musical.');
+      return;
+    }
+
+    if (!cacheMinimo.trim()) {
+      setApiError('Informe o cachê mínimo.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const data = await registerArtistRequest({
+      nome: nomeCompleto.trim(),
+      email: email.trim().toLowerCase(),
       senha,
-      nomeArtistico,
-      generoMusical,
-      cacheMinimo,
-      preferencias,
-    };
+      telefone: telefone.trim() || undefined,
+      nome_artista: nomeArtistico.trim(),
+      genero_musical: generoMusical.trim(),
+      cache_min: cacheMinimo.trim(),
+      portifolio: preferencias.trim() || undefined,
+    });
 
-    console.log('Cadastro do artista:', payload);
+      Alert.alert('Sucesso', data.message || 'Artista cadastrado com sucesso!');
+      router.replace('/');
+    } catch (error) {
+      setApiError(error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -48,7 +97,10 @@ export default function RegisterArtistScreen() {
             label="Nome Completo"
             placeholder="Nome completo"
             value={nomeCompleto}
-            onChangeText={setNomeCompleto}
+            onChangeText={(text) => {
+              setNomeCompleto(text);
+              setApiError('');
+            }}
           />
 
           <Input
@@ -56,7 +108,10 @@ export default function RegisterArtistScreen() {
             placeholder="Email"
             keyboardType="email-address"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(text) => {
+              setEmail(text);
+              setApiError('');
+            }}
           />
 
           <Input
@@ -64,7 +119,10 @@ export default function RegisterArtistScreen() {
             placeholder="+55 85 99999-9999"
             keyboardType="phone-pad"
             value={telefone}
-            onChangeText={setTelefone}
+            onChangeText={(text) => {
+              setTelefone(text);
+              setApiError('');
+            }}
           />
 
           <Input
@@ -72,21 +130,30 @@ export default function RegisterArtistScreen() {
             placeholder="Senha"
             secureTextEntry
             value={senha}
-            onChangeText={setSenha}
+            onChangeText={(text) => {
+              setSenha(text);
+              setApiError('');
+            }}
           />
 
           <Input
             label="Nome Artístico"
             placeholder="Nome artístico"
             value={nomeArtistico}
-            onChangeText={setNomeArtistico}
+            onChangeText={(text) => {
+              setNomeArtistico(text);
+              setApiError('');
+            }}
           />
 
           <Input
             label="Gênero Musical"
             placeholder="Ex: Forró, Funk, Sertanejo"
             value={generoMusical}
-            onChangeText={setGeneroMusical}
+            onChangeText={(text) => {
+              setGeneroMusical(text);
+              setApiError('');
+            }}
           />
 
           <Input
@@ -94,20 +161,31 @@ export default function RegisterArtistScreen() {
             placeholder="Ex: 1500"
             keyboardType="numeric"
             value={cacheMinimo}
-            onChangeText={setCacheMinimo}
+            onChangeText={(text) => {
+              setCacheMinimo(text);
+              setApiError('');
+            }}
           />
 
           <Input
-            label="Preferências"
+            label="Portfólio"
             placeholder="https://..."
             value={preferencias}
-            onChangeText={setPreferencias}
+            onChangeText={(text) => {
+              setPreferencias(text);
+              setApiError('');
+            }}
           />
         </View>
+
+        {apiError ? (
+          <Text style={styles.apiErrorText}>{apiError}</Text>
+        ) : null}
 
         <Button
           title="Criar Conta"
           onPress={handleCreateAccount}
+          loading={loading}
           style={styles.submitButton}
         />
       </ScrollView>
@@ -143,5 +221,11 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     marginTop: 36,
+  },
+  apiErrorText: {
+    color: '#FF6B6B',
+    marginTop: 20,
+    textAlign: 'center',
+    fontSize: 14,
   },
 });
