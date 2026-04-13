@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
+import { registerCasaShowRequest } from '../../services/api';
 
 export default function RegisterCasaShowScreen() {
   const [nomeCasa, setNomeCasa] = useState('');
@@ -15,6 +16,8 @@ export default function RegisterCasaShowScreen() {
   const [endereco, setEndereco] = useState('');
   
   const [errors, setErrors] = useState({});
+  const [apiError, setApiError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const validate = () => {
     const newErrors = {};
@@ -30,20 +33,29 @@ export default function RegisterCasaShowScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleCreateAccount = () => {
+  const handleCreateAccount = async () => {
+    setApiError('');
     if (validate()) {
-      const payload = {
-        nomeCasa,
-        cnpj,
-        email,
-        telefone,
-        senha,
-        capacidade,
-        endereco,
-      };
+      try {
+        setLoading(true);
+        const payload = {
+          nome: nomeCasa.trim(),
+          cnpj: cnpj.replace(/\D/g, ''),
+          email: email.trim().toLowerCase(),
+          telefone: telefone.replace(/\D/g, ''),
+          senha,
+          capacidade: Number(capacidade.replace(/\D/g, '')),
+          endereco: endereco.trim(),
+        };
 
-      console.log('Cadastro da casa de show:', payload);
-      // Aqui seria implementada a chamada para a API
+        const data = await registerCasaShowRequest(payload);
+        Alert.alert('Sucesso', data.message || 'Cadastro realizado com sucesso!');
+        router.replace('/');
+      } catch (error) {
+        setApiError(error.message);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -137,9 +149,14 @@ export default function RegisterCasaShowScreen() {
           </View>
         </View>
 
+        {apiError ? (
+          <Text style={styles.apiErrorText}>{apiError}</Text>
+        ) : null}
+
         <Button
           title="Criar Conta"
           onPress={handleCreateAccount}
+          loading={loading}
           style={styles.submitButton}
         />
       </ScrollView>
@@ -184,5 +201,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
     marginLeft: 4,
+  },
+  apiErrorText: {
+    color: '#FF6B6B',
+    marginTop: 20,
+    textAlign: 'center',
+    fontSize: 14,
   },
 });

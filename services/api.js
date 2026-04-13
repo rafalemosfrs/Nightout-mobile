@@ -45,3 +45,9 @@ export function registerArtistRequest(payload) {
   });
 }
 
+export function registerCasaShowRequest(payload) {
+  return request("/casadeshow/cadastro", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
