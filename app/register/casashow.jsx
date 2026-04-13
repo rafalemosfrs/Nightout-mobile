@@ -8,6 +8,7 @@ import { registerCasaShowRequest } from '../../services/api';
 
 export default function RegisterCasaShowScreen() {
   const [nomeCasa, setNomeCasa] = useState('');
+  const [nomeFantasia, setNomeFantasia] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
@@ -22,6 +23,7 @@ export default function RegisterCasaShowScreen() {
   const validate = () => {
     const newErrors = {};
     if (!nomeCasa.trim()) newErrors.nomeCasa = 'Nome da casa é obrigatório';
+    if (!nomeFantasia.trim()) newErrors.nomeFantasia = 'Nome fantasia é obrigatório';
     if (!cnpj.trim()) newErrors.cnpj = 'CNPJ é obrigatório';
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) newErrors.email = 'Email inválido';
     if (!telefone.trim()) newErrors.telefone = 'Telefone é obrigatório';
@@ -40,6 +42,7 @@ export default function RegisterCasaShowScreen() {
         setLoading(true);
         const payload = {
           nome: nomeCasa.trim(),
+          nome_fantasia: nomeFantasia.trim(),
           cnpj: cnpj.replace(/\D/g, ''),
           email: email.trim().toLowerCase(),
           telefone: telefone.replace(/\D/g, ''),
@@ -76,11 +79,21 @@ export default function RegisterCasaShowScreen() {
           <View style={styles.inputWrapper}>
             <Input
               label="Nome da Casa"
-              placeholder="Nome do estabelecimento"
+              placeholder="Nome do estabelecimento (Razão Social)"
               value={nomeCasa}
               onChangeText={(text) => { setNomeCasa(text); setErrors({...errors, nomeCasa: null}); }}
             />
             {errors.nomeCasa && <Text style={styles.errorText}>{errors.nomeCasa}</Text>}
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Input
+              label="Nome Fantasia"
+              placeholder="Nome Fantasia"
+              value={nomeFantasia}
+              onChangeText={(text) => { setNomeFantasia(text); setErrors({...errors, nomeFantasia: null}); }}
+            />
+            {errors.nomeFantasia && <Text style={styles.errorText}>{errors.nomeFantasia}</Text>}
           </View>
 
           <View style={styles.inputWrapper}>
