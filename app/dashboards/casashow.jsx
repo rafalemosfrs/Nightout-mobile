@@ -186,8 +186,6 @@ async function getCasaShowDashboardData() {
     return buildDashboardData(casaDeShowMock);
   }
 
-/* a integração tu faz aq @diego, n esquece de tirar os mocks*/
-
   return buildDashboardData(casaDeShowMock);
 }
 
@@ -348,6 +346,27 @@ export default function CasaShowDashboardScreen() {
           </View>
         </View>
 
+        <TouchableOpacity
+          style={styles.eventsShortcutCard}
+          activeOpacity={0.85}
+          onPress={() => router.push('/events')}
+        >
+          <View style={styles.eventsShortcutLeft}>
+            <View style={styles.eventsShortcutIcon}>
+              <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+            </View>
+
+            <View style={styles.eventsShortcutTextBox}>
+              <Text style={styles.eventsShortcutTitle}>Gerenciar eventos</Text>
+              <Text style={styles.eventsShortcutSubtitle}>
+                Abrir listagem e criar novos eventos da casa
+              </Text>
+            </View>
+          </View>
+
+          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+
         <View style={styles.statsGrid}>
           {summaryCards.map((card) => (
             <View key={card.title} style={styles.statCard}>
@@ -393,7 +412,9 @@ export default function CasaShowDashboardScreen() {
 
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Telefone</Text>
-              <Text style={styles.detailValue}>{casa.usuario.telefone || 'Não informado'}</Text>
+              <Text style={styles.detailValue}>
+                {casa.usuario.telefone || 'Não informado'}
+              </Text>
             </View>
 
             <View style={styles.detailItem}>
@@ -646,6 +667,46 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   heroSecondaryText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  eventsShortcutCard: {
+    backgroundColor: colors.backgroundCard,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    ...shadows.small,
+  },
+  eventsShortcutLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  eventsShortcutIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(0, 102, 255, 0.14)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  eventsShortcutTextBox: {
+    flex: 1,
+  },
+  eventsShortcutTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  eventsShortcutSubtitle: {
     ...typography.bodySmall,
     color: colors.textSecondary,
   },
