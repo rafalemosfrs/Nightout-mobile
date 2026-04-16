@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,6 +15,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Button from '../../components/Button';
 import {
   borderRadius,
@@ -25,6 +28,7 @@ import {
 
 const USER_ID_MOCK = 'casa-show-001';
 const STATUS_OPTIONS = ['ATIVO', 'CANCELADO', 'FINALIZADO'];
+const EVENTS_STORAGE_KEY = '@nightout:casashow-events';
 
 const INITIAL_FORM = {
   id_evento: '',
@@ -35,6 +39,7 @@ const INITIAL_FORM = {
   data_fim: '',
   local: '',
   status: 'ATIVO',
+  foto_evento: null,
   propostasCasa: [],
   propostasArtista: [],
   eventoArtistas: [],
@@ -50,6 +55,7 @@ const MOCK_EVENTS = [
     data_fim: '2026-02-25T04:00:00.000Z',
     local: 'Av. Beira Mar, 1200',
     status: 'ATIVO',
+    foto_evento: null,
     propostasCasa: [],
     propostasArtista: [],
     eventoArtistas: [],
@@ -63,6 +69,7 @@ const MOCK_EVENTS = [
     data_fim: '2026-02-28T05:00:00.000Z',
     local: 'Living Music Hall',
     status: 'ATIVO',
+    foto_evento: null,
     propostasCasa: [],
     propostasArtista: [],
     eventoArtistas: [],
@@ -76,6 +83,7 @@ const MOCK_EVENTS = [
     data_fim: '2026-02-15T03:00:00.000Z',
     local: 'Centro de Eventos Night Out',
     status: 'FINALIZADO',
+    foto_evento: null,
     propostasCasa: [],
     propostasArtista: [],
     eventoArtistas: [],
@@ -84,6 +92,7 @@ const MOCK_EVENTS = [
 
 function formatDateTime(isoString) {
   if (!isoString) return '--';
+
   const date = new Date(isoString);
 
   if (Number.isNaN(date.getTime())) return '--';
@@ -138,8 +147,18 @@ function getStatusStyles(status) {
   }
 }
 
+function normalizeEventItem(item) {
+  return {
+    ...item,
+    foto_evento: item?.foto_evento || null,
+    propostasCasa: item?.propostasCasa || [],
+    propostasArtista: item?.propostasArtista || [],
+    eventoArtistas: item?.eventoArtistas || [],
+  };
+}
+
 export default function CasaShowEventosScreen() {
-  const [events, setEvents] = useState(MOCK_EVENTS);
+  const [events, setEvents] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('TODOS');
   const [showFilters, setShowFilters] = useState(false);
@@ -147,6 +166,47 @@ export default function CasaShowEventosScreen() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
+
+  useEffect(() => {
+    async function loadPersistedEvents() {
+      try {
+        const storedEvents = await AsyncStorage.getItem(EVENTS_STORAGE_KEY);
+
+        if (storedEvents) {
+          const parsedEvents = JSON.parse(storedEvents);
+          const safeEvents = Array.isArray(parsedEvents)
+            ? parsedEvents.map(normalizeEventItem)
+            : MOCK_EVENTS;
+
+          setEvents(safeEvents);
+        } else {
+          setEvents(MOCK_EVENTS);
+        }
+      } catch (error) {
+        console.log('Erro ao carregar eventos salvos:', error);
+        setEvents(MOCK_EVENTS);
+      } finally {
+        setHasHydratedStorage(true);
+      }
+    }
+
+    loadPersistedEvents();
+  }, []);
+
+  useEffect(() => {
+    async function persistEvents() {
+      if (!hasHydratedStorage) return;
+
+      try {
+        await AsyncStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(events));
+      } catch (error) {
+        console.log('Erro ao salvar eventos localmente:', error);
+      }
+    }
+
+    persistEvents();
+  }, [events, hasHydratedStorage]);
 
   const summary = useMemo(() => {
     const total = events.length;
@@ -200,6 +260,53 @@ export default function CasaShowEventosScreen() {
     setFormError('');
   }
 
+  async function handlePickEventImage() {
+    try {
+      if (Platform.OS !== 'web') {
+        const permissionResult =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (!permissionResult.granted) {
+          Alert.alert(
+            'Permissão necessária',
+            'Precisamos de acesso à galeria para selecionar a foto do evento.'
+          );
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.5,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const mimeType = asset.mimeType || 'image/jpeg';
+      const previewUri = asset.base64
+        ? `data:${mimeType};base64,${asset.base64}`
+        : asset.uri;
+
+      updateFormField('foto_evento', {
+        previewUri,
+        base64: asset.base64 || null,
+        fileName: asset.fileName || `evento-${Date.now()}.jpg`,
+        mimeType,
+        width: asset.width || null,
+        height: asset.height || null,
+      });
+    } catch (error) {
+      console.log('Erro ao selecionar imagem:', error);
+      Alert.alert('Erro', 'Não foi possível selecionar a imagem.');
+    }
+  }
+
   async function handleCreateEvent() {
     setFormError('');
 
@@ -249,7 +356,7 @@ export default function CasaShowEventosScreen() {
     try {
       setIsSubmitting(true);
 
-      const newEvent = {
+      const newEvent = normalizeEventItem({
         id_evento: `evt-${Date.now()}`,
         id_usuario: form.id_usuario || USER_ID_MOCK,
         titulo: form.titulo.trim(),
@@ -258,17 +365,19 @@ export default function CasaShowEventosScreen() {
         data_fim: parsedEnd,
         local: form.local.trim(),
         status: form.status,
+        foto_evento: form.foto_evento || null,
         propostasCasa: form.propostasCasa || [],
         propostasArtista: form.propostasArtista || [],
         eventoArtistas: form.eventoArtistas || [],
-      };
+      });
 
       setEvents((prevState) => [newEvent, ...prevState]);
       closeCreateModal();
       resetForm();
 
-      Alert.alert('Sucesso', 'Evento criado localmente com sucesso.');
+      Alert.alert('Sucesso', 'Evento criado localmente com foto persistida.');
     } catch (error) {
+      console.log('Erro ao criar evento:', error);
       setFormError('Não foi possível criar o evento agora.');
     } finally {
       setIsSubmitting(false);
@@ -410,11 +519,19 @@ export default function CasaShowEventosScreen() {
                 return (
                   <View key={eventItem.id_evento} style={styles.eventCard}>
                     <View style={styles.eventDateBox}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={18}
-                        color={colors.primary}
-                      />
+                      {eventItem.foto_evento?.previewUri ? (
+                        <Image
+                          source={{ uri: eventItem.foto_evento.previewUri }}
+                          style={styles.eventThumb}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Ionicons
+                          name="calendar-outline"
+                          size={18}
+                          color={colors.primary}
+                        />
+                      )}
                     </View>
 
                     <View style={styles.eventContent}>
@@ -497,11 +614,42 @@ export default function CasaShowEventosScreen() {
               contentContainerStyle={styles.modalScrollContent}
             >
               <Text style={styles.fieldLabel}>Foto do Evento</Text>
-              <TouchableOpacity activeOpacity={0.85} style={styles.uploadBox}>
-                <Ionicons name="image-outline" size={34} color={colors.primary} />
-                <Text style={styles.uploadTitle}>Clique para adicionar foto</Text>
-                <Text style={styles.uploadSubtitle}>PNG, JPG até 5MB</Text>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.uploadBox}
+                onPress={handlePickEventImage}
+              >
+                {form.foto_evento?.previewUri ? (
+                  <>
+                    <Image
+                      source={{ uri: form.foto_evento.previewUri }}
+                      style={styles.uploadPreview}
+                      resizeMode="cover"
+                    />
+                    <Text style={styles.uploadTitle}>Toque para trocar a foto</Text>
+                    <Text style={styles.uploadSubtitle}>
+                      A imagem será salva localmente junto com o evento
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="image-outline" size={34} color={colors.primary} />
+                    <Text style={styles.uploadTitle}>Clique para adicionar foto</Text>
+                    <Text style={styles.uploadSubtitle}>PNG, JPG até 5MB</Text>
+                  </>
+                )}
               </TouchableOpacity>
+
+              {form.foto_evento?.previewUri ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={styles.removeImageButton}
+                  onPress={() => updateFormField('foto_evento', null)}
+                >
+                  <Text style={styles.removeImageButtonText}>Remover foto</Text>
+                </TouchableOpacity>
+              ) : null}
 
               <Text style={styles.fieldLabel}>Título do Evento</Text>
               <TextInput
@@ -810,6 +958,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.md,
+    overflow: 'hidden',
+  },
+  eventThumb: {
+    width: '100%',
+    height: '100%',
+    borderRadius: borderRadius.md,
   },
   eventContent: {
     flex: 1,
@@ -939,6 +1093,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  uploadPreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: borderRadius.md,
     marginBottom: spacing.sm,
   },
   uploadTitle: {
@@ -947,10 +1109,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: spacing.sm,
     marginBottom: 4,
+    textAlign: 'center',
   },
   uploadSubtitle: {
     ...typography.caption,
     color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  removeImageButton: {
+    alignSelf: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  removeImageButtonText: {
+    ...typography.bodySmall,
+    color: colors.error,
+    fontWeight: '700',
   },
   input: {
     minHeight: 48,
