@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ScrollView,
   SafeAreaView,
@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   colors,
@@ -127,8 +128,48 @@ function getStatusStyle(status) {
   }
 }
 
+function getAvatarLabel(nome) {
+  if (!nome) return 'AR';
+  const partes = nome.trim().split(' ').filter(Boolean);
+
+  if (partes.length === 1) {
+    return partes[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${partes[0][0]}${partes[1][0]}`.toUpperCase();
+}
+
 export default function ArtistDashboardScreen() {
-  const data = dashboardMock;
+  const [sessionUser, setSessionUser] = useState(null);
+
+  useEffect(() => {
+    async function loadSession() {
+      try {
+        const stored = await AsyncStorage.getItem('user_session');
+        if (stored) {
+          setSessionUser(JSON.parse(stored));
+        }
+      } catch (error) {
+        console.log('Erro ao carregar sessão', error);
+      }
+    }
+
+    loadSession();
+  }, []);
+
+  const data = useMemo(() => {
+    const nomeFinal = sessionUser?.nome || dashboardMock.artista.nome;
+
+    return {
+      ...dashboardMock,
+      artista: {
+        ...dashboardMock.artista,
+        nome: nomeFinal,
+        avatarLabel: getAvatarLabel(nomeFinal),
+      },
+    };
+  }, [sessionUser]);
+
   const maxSaldo = getMaxSaldo(data.saldoUltimosMeses);
   const maxShows = getMaxShows(data.showsUltimosMeses);
 
