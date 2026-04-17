@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, ScrollView, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Input from '../../components/Input';
@@ -16,23 +16,7 @@ export default function RegisterArtistScreen() {
   const [cacheMinimo, setCacheMinimo] = useState('');
   const [preferencias, setPreferencias] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const [nomeError, setNomeError] = useState('');
-  const [emailError, setEmailError] = useState('');
-  const [senhaError, setSenhaError] = useState('');
-  const [nomeArtisticoError, setNomeArtisticoError] = useState('');
-  const [generoMusicalError, setGeneroMusicalError] = useState('');
-  const [cacheMinimoError, setCacheMinimoError] = useState('');
   const [apiError, setApiError] = useState('');
-
-  const clearFieldErrors = () => {
-    setNomeError('');
-    setEmailError('');
-    setSenhaError('');
-    setNomeArtisticoError('');
-    setGeneroMusicalError('');
-    setCacheMinimoError('');
-  };
 
   const validateEmail = (valor) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -40,56 +24,51 @@ export default function RegisterArtistScreen() {
   };
 
   const handleCreateAccount = async () => {
-    clearFieldErrors();
     setApiError('');
 
-    let hasError = false;
-
     if (!nomeCompleto.trim()) {
-      setNomeError('Informe seu nome completo.');
-      hasError = true;
+      setApiError('Informe seu nome completo.');
+      return;
     }
 
     if (!email.trim() || !validateEmail(email)) {
-      setEmailError('Informe um email válido.');
-      hasError = true;
+      setApiError('Informe um email válido.');
+      return;
     }
 
     if (!senha || senha.length < 6) {
-      setSenhaError('A senha deve ter pelo menos 6 caracteres.');
-      hasError = true;
+      setApiError('A senha deve ter pelo menos 6 caracteres.');
+      return;
     }
 
     if (!nomeArtistico.trim()) {
-      setNomeArtisticoError('Informe seu nome artístico.');
-      hasError = true;
+      setApiError('Informe seu nome artístico.');
+      return;
     }
 
     if (!generoMusical.trim()) {
-      setGeneroMusicalError('Informe o gênero musical.');
-      hasError = true;
+      setApiError('Informe o gênero musical.');
+      return;
     }
 
     if (!cacheMinimo.trim()) {
-      setCacheMinimoError('Informe o cachê mínimo.');
-      hasError = true;
+      setApiError('Informe o cachê mínimo.');
+      return;
     }
-
-    if (hasError) return;
 
     try {
       setLoading(true);
 
       const data = await registerArtistRequest({
-        nome: nomeCompleto.trim(),
-        email: email.trim().toLowerCase(),
-        senha,
-        telefone: telefone.trim() || undefined,
-        nome_artista: nomeArtistico.trim(),
-        genero_musical: generoMusical.trim(),
-        cache_min: cacheMinimo.trim(),
-        portifolio: preferencias.trim() || undefined,
-      });
+      nome: nomeCompleto.trim(),
+      email: email.trim().toLowerCase(),
+      senha,
+      telefone: telefone.trim() || undefined,
+      nome_artista: nomeArtistico.trim(),
+      genero_musical: generoMusical.trim(),
+      cache_min: cacheMinimo.trim(),
+      portifolio: preferencias.trim() || undefined,
+    });
 
       Alert.alert('Sucesso', data.message || 'Artista cadastrado com sucesso!');
       router.replace('/');
@@ -101,144 +80,102 @@ export default function RegisterArtistScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <Ionicons name="chevron-back" size={34} color="#FFFFFF" />
+      </TouchableOpacity>
+
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            style={styles.iconButton}
-            activeOpacity={0.8}
-            onPress={() => router.back()}
-          >
-            <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-
-          <Text style={styles.topBarTitle}>Cadastrar Artista</Text>
-
-          <View style={styles.iconPlaceholder} />
-        </View>
+        <Text style={styles.title}>Cadastrar Artista</Text>
 
         <View style={styles.form}>
-          <View>
-            <Input
-              label="Nome Completo"
-              placeholder="Nome completo"
-              value={nomeCompleto}
-              onChangeText={(text) => {
-                setNomeCompleto(text);
-                setNomeError('');
-                setApiError('');
-              }}
-            />
-            {nomeError ? <Text style={styles.fieldErrorText}>{nomeError}</Text> : null}
-          </View>
+          <Input
+            label="Nome Completo"
+            placeholder="Nome completo"
+            value={nomeCompleto}
+            onChangeText={(text) => {
+              setNomeCompleto(text);
+              setApiError('');
+            }}
+          />
 
-          <View>
-            <Input
-              label="Email"
-              placeholder="Email"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={(text) => {
-                setEmail(text);
-                setEmailError('');
-                setApiError('');
-              }}
-            />
-            {emailError ? <Text style={styles.fieldErrorText}>{emailError}</Text> : null}
-          </View>
+          <Input
+            label="Email"
+            placeholder="Email"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              setApiError('');
+            }}
+          />
 
-          <View>
-            <Input
-              label="Telefone"
-              placeholder="+55 85 99999-9999"
-              keyboardType="phone-pad"
-              value={telefone}
-              onChangeText={(text) => {
-                setTelefone(text);
-                setApiError('');
-              }}
-            />
-          </View>
+          <Input
+            label="Telefone"
+            placeholder="+55 85 99999-9999"
+            keyboardType="phone-pad"
+            value={telefone}
+            onChangeText={(text) => {
+              setTelefone(text);
+              setApiError('');
+            }}
+          />
 
-          <View>
-            <Input
-              label="Senha"
-              placeholder="Senha"
-              secureTextEntry
-              value={senha}
-              onChangeText={(text) => {
-                setSenha(text);
-                setSenhaError('');
-                setApiError('');
-              }}
-            />
-            {senhaError ? <Text style={styles.fieldErrorText}>{senhaError}</Text> : null}
-          </View>
+          <Input
+            label="Senha"
+            placeholder="Senha"
+            secureTextEntry
+            value={senha}
+            onChangeText={(text) => {
+              setSenha(text);
+              setApiError('');
+            }}
+          />
 
-          <View>
-            <Input
-              label="Nome Artístico"
-              placeholder="Nome artístico"
-              value={nomeArtistico}
-              onChangeText={(text) => {
-                setNomeArtistico(text);
-                setNomeArtisticoError('');
-                setApiError('');
-              }}
-            />
-            {nomeArtisticoError ? (
-              <Text style={styles.fieldErrorText}>{nomeArtisticoError}</Text>
-            ) : null}
-          </View>
+          <Input
+            label="Nome Artístico"
+            placeholder="Nome artístico"
+            value={nomeArtistico}
+            onChangeText={(text) => {
+              setNomeArtistico(text);
+              setApiError('');
+            }}
+          />
 
-          <View>
-            <Input
-              label="Gênero Musical"
-              placeholder="Ex: Forró, Funk, Sertanejo"
-              value={generoMusical}
-              onChangeText={(text) => {
-                setGeneroMusical(text);
-                setGeneroMusicalError('');
-                setApiError('');
-              }}
-            />
-            {generoMusicalError ? (
-              <Text style={styles.fieldErrorText}>{generoMusicalError}</Text>
-            ) : null}
-          </View>
+          <Input
+            label="Gênero Musical"
+            placeholder="Ex: Forró, Funk, Sertanejo"
+            value={generoMusical}
+            onChangeText={(text) => {
+              setGeneroMusical(text);
+              setApiError('');
+            }}
+          />
 
-          <View>
-            <Input
-              label="Cachê Mínimo (R$)"
-              placeholder="Ex: 1500"
-              keyboardType="numeric"
-              value={cacheMinimo}
-              onChangeText={(text) => {
-                setCacheMinimo(text);
-                setCacheMinimoError('');
-                setApiError('');
-              }}
-            />
-            {cacheMinimoError ? (
-              <Text style={styles.fieldErrorText}>{cacheMinimoError}</Text>
-            ) : null}
-          </View>
+          <Input
+            label="Cachê Mínimo (R$)"
+            placeholder="Ex: 1500"
+            keyboardType="numeric"
+            value={cacheMinimo}
+            onChangeText={(text) => {
+              setCacheMinimo(text);
+              setApiError('');
+            }}
+          />
 
-          <View>
-            <Input
-              label="Portfólio"
-              placeholder="https://..."
-              value={preferencias}
-              onChangeText={(text) => {
-                setPreferencias(text);
-                setApiError('');
-              }}
-            />
-          </View>
+          <Input
+            label="Portfólio"
+            placeholder="https://..."
+            value={preferencias}
+            onChangeText={(text) => {
+              setPreferencias(text);
+              setApiError('');
+            }}
+          />
         </View>
 
         {apiError ? (
@@ -252,7 +189,7 @@ export default function RegisterArtistScreen() {
           style={styles.submitButton}
         />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -261,43 +198,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#031533',
   },
+  backButton: {
+    position: 'absolute',
+    top: 48,
+    left: 16,
+    zIndex: 10,
+  },
   content: {
-    padding: 22,
+    paddingTop: 84,
+    paddingHorizontal: 22,
     paddingBottom: 40,
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 32,
-  },
-  topBarTitle: {
+  title: {
     color: '#D1D5DB',
     fontSize: 28,
     fontWeight: '700',
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconPlaceholder: {
-    width: 40,
-    height: 40,
+    textAlign: 'center',
+    marginBottom: 32,
   },
   form: {
     gap: 18,
   },
   submitButton: {
     marginTop: 36,
-  },
-  fieldErrorText: {
-    color: '#FF6B6B',
-    fontSize: 12,
-    marginTop: 6,
-    marginLeft: 4,
   },
   apiErrorText: {
     color: '#FF6B6B',
