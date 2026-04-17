@@ -15,6 +15,9 @@ export default function RegisterCasaShowScreen() {
   const [senha, setSenha] = useState('');
   const [capacidade, setCapacidade] = useState('');
   const [endereco, setEndereco] = useState('');
+  const [bairro, setBairro] = useState('');
+  const [estado, setEstado] = useState('');
+  const [cep, setCep] = useState('');
   
   const [errors, setErrors] = useState({});
   const [apiError, setApiError] = useState('');
@@ -30,6 +33,9 @@ export default function RegisterCasaShowScreen() {
     if (!senha || senha.length < 6) newErrors.senha = 'A senha deve ter pelo menos 6 caracteres';
     if (!capacidade.trim() || isNaN(capacidade)) newErrors.capacidade = 'Capacidade inválida (apenas números)';
     if (!endereco.trim()) newErrors.endereco = 'Endereço é obrigatório';
+    if (!bairro.trim()) newErrors.bairro = 'Bairro é obrigatório';
+    if (!estado.trim()) newErrors.estado = 'Estado é obrigatório';
+    if (!cep.trim()) newErrors.cep = 'CEP é obrigatório';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -41,14 +47,23 @@ export default function RegisterCasaShowScreen() {
       try {
         setLoading(true);
         const payload = {
-          nome: nomeCasa.trim(),
           nome_fantasia: nomeFantasia.trim(),
           cnpj: cnpj.replace(/\D/g, ''),
-          email: email.trim().toLowerCase(),
-          telefone: telefone.replace(/\D/g, ''),
-          senha,
-          capacidade: Number(capacidade.replace(/\D/g, '')),
+          capacidade: capacidade.replace(/\D/g, ''),
           endereco: endereco.trim(),
+          bairro: bairro.trim(),
+          estado: estado.trim(),
+          cep: cep.replace(/\D/g, ''),
+          geo_lat: "0",
+          geo_lng: "0",
+          usuario: [
+            {
+              nome: nomeCasa.trim(),
+              email: email.trim().toLowerCase(),
+              telefone: telefone.replace(/\D/g, ''),
+              senha,
+            }
+          ]
         };
 
         const data = await registerCasaShowRequest(payload);
@@ -154,11 +169,42 @@ export default function RegisterCasaShowScreen() {
           <View style={styles.inputWrapper}>
             <Input
               label="Endereço"
-              placeholder="Avenida Paulista, 1000 - São Paulo"
+              placeholder="Avenida Paulista, 1000"
               value={endereco}
               onChangeText={(text) => { setEndereco(text); setErrors({...errors, endereco: null}); }}
             />
             {errors.endereco && <Text style={styles.errorText}>{errors.endereco}</Text>}
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Input
+              label="Bairro"
+              placeholder="Bela Vista"
+              value={bairro}
+              onChangeText={(text) => { setBairro(text); setErrors({...errors, bairro: null}); }}
+            />
+            {errors.bairro && <Text style={styles.errorText}>{errors.bairro}</Text>}
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Input
+              label="Estado"
+              placeholder="SP"
+              value={estado}
+              onChangeText={(text) => { setEstado(text); setErrors({...errors, estado: null}); }}
+            />
+            {errors.estado && <Text style={styles.errorText}>{errors.estado}</Text>}
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Input
+              label="CEP"
+              placeholder="00000-000"
+              keyboardType="numeric"
+              value={cep}
+              onChangeText={(text) => { setCep(text); setErrors({...errors, cep: null}); }}
+            />
+            {errors.cep && <Text style={styles.errorText}>{errors.cep}</Text>}
           </View>
         </View>
 
