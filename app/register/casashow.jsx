@@ -47,6 +47,10 @@ export default function RegisterCasaShowScreen() {
       try {
         setLoading(true);
         const payload = {
+          nome: nomeCasa.trim(),
+          email: email.trim().toLowerCase(),
+          telefone: telefone.replace(/\D/g, ''),
+          senha,
           nome_fantasia: nomeFantasia.trim(),
           cnpj: cnpj.replace(/\D/g, ''),
           capacidade: capacidade.replace(/\D/g, ''),
@@ -56,14 +60,6 @@ export default function RegisterCasaShowScreen() {
           cep: cep.replace(/\D/g, ''),
           geo_lat: "0",
           geo_lng: "0",
-          usuario: [
-            {
-              nome: nomeCasa.trim(),
-              email: email.trim().toLowerCase(),
-              telefone: telefone.replace(/\D/g, ''),
-              senha,
-            }
-          ]
         };
 
         const data = await registerCasaShowRequest(payload);
