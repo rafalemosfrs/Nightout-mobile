@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Hop as Home, Calendar, MapPin, User } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/theme';
 
 export default function TabLayout() {
@@ -7,56 +7,53 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: false,
         tabBarStyle: {
           backgroundColor: colors.backgroundCard,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          height: 68,
+          paddingTop: 10,
+          paddingBottom: 10,
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
-        },
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="casashow"
         options={{
-          title: 'Login',
+          title: 'Painel',
           tabBarIcon: ({ size, color }) => (
-            <Home size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
+
       <Tabs.Screen
         name="events"
         options={{
           title: 'Eventos',
           tabBarIcon: ({ size, color }) => (
-            <Calendar size={size} color={color} />
+            <Ionicons name="calendar-outline" size={size} color={color} />
           ),
         }}
       />
-      <Tabs.Screen
-        name="venues"
-        options={{
-          title: 'Locais',
-          tabBarIcon: ({ size, color }) => (
-            <MapPin size={size} color={color} />
-          ),
-        }}
-      />
+
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Perfil',
           tabBarIcon: ({ size, color }) => (
-            <User size={size} color={color} />
+            <Ionicons name="person-outline" size={size} color={color} />
           ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="venues"
+        options={{
+          href: null,
         }}
       />
     </Tabs>

@@ -16,14 +16,10 @@ export default function RegisterScreen() {
 
       <Text style={styles.sectionTitle}>Selecione o tipo de conta</Text>
 
-<TouchableOpacity
-  style={styles.card}
-  activeOpacity={0.85}
-  onPress={() => router.push('/register/client')}
->
-  <MaterialIcons name="person" size={72} color="#6EE56B" />
-  <Text style={styles.cardLabel}>Cliente</Text>
-</TouchableOpacity>
+      <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => router.push('/register/client')}>
+        <MaterialIcons name="person" size={72} color="#6EE56B" />
+        <Text style={styles.cardLabel}>Cliente</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => router.push('/register/artista')}>
         <MaterialCommunityIcons name="music-note" size={72} color="#C26AA0" />
