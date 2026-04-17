@@ -18,18 +18,25 @@ export default function RegisterClientScreen() {
 
   const [nomeError, setNomeError] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [telefoneError, setTelefoneError] = useState('');
   const [senhaError, setSenhaError] = useState('');
   const [apiError, setApiError] = useState('');
 
   const clearFieldErrors = () => {
     setNomeError('');
     setEmailError('');
+    setTelefoneError('');
     setSenhaError('');
   };
 
   const validateEmail = (valor) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(valor);
+  };
+
+  const validateTelefone = (valor) => {
+    const digits = valor.replace(/\D/g, '');
+    return digits.length >= 10 && digits.length <= 11;
   };
 
   const handleRegister = async () => {
@@ -48,6 +55,14 @@ export default function RegisterClientScreen() {
       hasError = true;
     }
 
+    if (!telefone.trim()) {
+      setTelefoneError('Informe o telefone.');
+      hasError = true;
+    } else if (!validateTelefone(telefone)) {
+      setTelefoneError('Informe um telefone válido com DDD.');
+      hasError = true;
+    }
+
     if (!senha || senha.length < 6) {
       setSenhaError('A senha deve ter pelo menos 6 caracteres.');
       hasError = true;
@@ -62,7 +77,7 @@ export default function RegisterClientScreen() {
         nome: nome.trim(),
         email: email.trim().toLowerCase(),
         senha,
-        telefone: telefone.trim() || undefined,
+        telefone: telefone.trim(),
         apelido: apelido.trim() || undefined,
         preferencias: preferencias.trim() || undefined,
         data_nascimento: dataNascimento.trim() || undefined,
@@ -135,9 +150,11 @@ export default function RegisterClientScreen() {
               value={telefone}
               onChangeText={(text) => {
                 setTelefone(text);
+                setTelefoneError('');
                 setApiError('');
               }}
             />
+            {telefoneError ? <Text style={styles.fieldErrorText}>{telefoneError}</Text> : null}
           </View>
 
           <View>

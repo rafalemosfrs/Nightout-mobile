@@ -19,24 +19,42 @@ export default function RegisterArtistScreen() {
 
   const [nomeError, setNomeError] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [telefoneError, setTelefoneError] = useState('');
   const [senhaError, setSenhaError] = useState('');
   const [nomeArtisticoError, setNomeArtisticoError] = useState('');
   const [generoMusicalError, setGeneroMusicalError] = useState('');
   const [cacheMinimoError, setCacheMinimoError] = useState('');
+  const [portfolioError, setPortfolioError] = useState('');
   const [apiError, setApiError] = useState('');
 
   const clearFieldErrors = () => {
     setNomeError('');
     setEmailError('');
+    setTelefoneError('');
     setSenhaError('');
     setNomeArtisticoError('');
     setGeneroMusicalError('');
     setCacheMinimoError('');
+    setPortfolioError('');
   };
 
   const validateEmail = (valor) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(valor);
+  };
+
+  const validateTelefone = (valor) => {
+    const digits = valor.replace(/\D/g, '');
+    return digits.length >= 10 && digits.length <= 11;
+  };
+
+  const validateCacheMinimo = (valor) => {
+    return /^[0-9]+([.,][0-9]{1,2})?$/.test(valor.trim());
+  };
+
+  const validatePortfolio = (valor) => {
+    if (!valor.trim()) return false;
+    return valor.includes('http://') || valor.includes('https://');
   };
 
   const handleCreateAccount = async () => {
@@ -52,6 +70,14 @@ export default function RegisterArtistScreen() {
 
     if (!email.trim() || !validateEmail(email)) {
       setEmailError('Informe um email válido.');
+      hasError = true;
+    }
+
+    if (!telefone.trim()) {
+      setTelefoneError('Informe o telefone.');
+      hasError = true;
+    } else if (!validateTelefone(telefone)) {
+      setTelefoneError('Informe um telefone válido com DDD.');
       hasError = true;
     }
 
@@ -73,6 +99,17 @@ export default function RegisterArtistScreen() {
     if (!cacheMinimo.trim()) {
       setCacheMinimoError('Informe o cachê mínimo.');
       hasError = true;
+    } else if (!validateCacheMinimo(cacheMinimo)) {
+      setCacheMinimoError('Informe apenas números. Ex: 1500 ou 1500,50');
+      hasError = true;
+    }
+
+    if (!preferencias.trim()) {
+      setPortfolioError('Informe o portfólio.');
+      hasError = true;
+    } else if (!validatePortfolio(preferencias)) {
+      setPortfolioError('Informe uma URL válida começando com http:// ou https://');
+      hasError = true;
     }
 
     if (hasError) return;
@@ -84,11 +121,11 @@ export default function RegisterArtistScreen() {
         nome: nomeCompleto.trim(),
         email: email.trim().toLowerCase(),
         senha,
-        telefone: telefone.trim() || undefined,
+        telefone: telefone.trim(),
         nome_artista: nomeArtistico.trim(),
         genero_musical: generoMusical.trim(),
         cache_min: cacheMinimo.trim(),
-        portifolio: preferencias.trim() || undefined,
+        portifolio: preferencias.trim(),
       });
 
       Alert.alert('Sucesso', data.message || 'Artista cadastrado com sucesso!');
@@ -159,9 +196,11 @@ export default function RegisterArtistScreen() {
               value={telefone}
               onChangeText={(text) => {
                 setTelefone(text);
+                setTelefoneError('');
                 setApiError('');
               }}
             />
+            {telefoneError ? <Text style={styles.fieldErrorText}>{telefoneError}</Text> : null}
           </View>
 
           <View>
@@ -235,9 +274,13 @@ export default function RegisterArtistScreen() {
               value={preferencias}
               onChangeText={(text) => {
                 setPreferencias(text);
+                setPortfolioError('');
                 setApiError('');
               }}
             />
+            {portfolioError ? (
+              <Text style={styles.fieldErrorText}>{portfolioError}</Text>
+            ) : null}
           </View>
         </View>
 
