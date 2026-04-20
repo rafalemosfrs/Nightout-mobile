@@ -14,21 +14,12 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import { colors, spacing, borderRadius, typography, shadows } from '../constants/theme';
 
-
 const HERO_IMAGE = 'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&h=1000&fit=crop&auto=format';
-
-const USER_ROLES = {
-  CLIENTE: 'CLIENTE',
-  ARTISTA: 'ARTISTA',
-  ADMINISTRADOR: 'ADMINISTRADOR',
-  CASASHOW: 'CASASHOW',
-};
-
-
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -36,62 +27,70 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState(USER_ROLES.ADMINISTRADOR);
-  const [emailError, setEmailError] = useState(false);
-  const [passwordError, setPasswordError] = useState(false);
+
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [apiError, setApiError] = useState('');
 
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+  const clearFieldErrors = () => {
+    setEmailError('');
+    setPasswordError('');
   };
 
-    const handleLogin = async () => {
-  setEmailError(false);
-  setPasswordError(false);
-  setApiError('');
+  const validateEmail = (valor) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(valor);
+  };
 
-  if (!email || !validateEmail(email)) {
-    setEmailError(true);
-    setApiError('Informe um email válido.');
-    return;
-  }
+  const handleLogin = async () => {
+    clearFieldErrors();
+    setApiError('');
 
-  if (!password || password.length < 6) {
-    setPasswordError(true);
-    setApiError('A senha deve ter pelo menos 6 caracteres.');
-    return;
-  }
+    let hasError = false;
 
-  try {
-    setLoading(true);
+    if (!email || !validateEmail(email)) {
+      setEmailError('Informe um email válido.');
+      hasError = true;
+    }
 
-    await loginRequest({
-      email: email.trim().toLowerCase(),
-      senha: password,
-    });
+    if (!password || password.length < 6) {
+      setPasswordError('A senha deve ter pelo menos 6 caracteres.');
+      hasError = true;
+    }
 
-    router.replace('/tabs');
-  } catch (error) {
-    setApiError(error.message);
-  } finally {
-    setLoading(false);
-  }
-};
+    if (hasError) return;
 
+    try {
+      setLoading(true);
 
-  // const getRoleDisplay = () => {
-  //   switch (selectedRole) {
-  //     case USER_ROLES.ADMINISTRADOR:
-  //       return 'Admin';
-  //     case USER_ROLES.ARTISTA:
-  //       return 'Artista';
-  //     case USER_ROLES.CASASHOW:
-  //       return 'Casa Show';
-  //     default:
-  //       return 'Cliente';
-  //   }
-  // };
+      const data = await loginRequest({
+        email: email.trim().toLowerCase(),
+        senha: password,
+      });
+
+      await AsyncStorage.setItem(
+        'user_session',
+        JSON.stringify({
+          token: data.token,
+          tipo: data.tipo,
+          nome: data.nome || '',
+          email: data.email || email.trim().toLowerCase(),
+        })
+      );
+
+      if (data.tipo === 'ARTISTA') {
+        router.replace('/dashboards/artista');
+      } else if (data.tipo === 'CLIENTE') {
+        router.replace('/tabs');
+      } else {
+        router.replace('/tabs');
+      }
+    } catch (error) {
+      setApiError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -142,13 +141,14 @@ export default function LoginScreen() {
                   placeholder="SeuEmail@gmail.com"
                   value={email}
                   onChangeText={(text) => {
-                  setEmail(text);
-                  setEmailError(false);
-                  setApiError('');
+                    setEmail(text);
+                    setEmailError('');
+                    setApiError('');
                   }}
                   keyboardType="email-address"
-                  error={emailError}
+                  error={!!emailError}
                 />
+                {emailError ? <Text style={styles.fieldErrorText}>{emailError}</Text> : null}
               </View>
 
               <View style={styles.inputGroup}>
@@ -157,14 +157,17 @@ export default function LoginScreen() {
                   icon={Lock}
                   placeholder="Senha"
                   value={password}
-                 onChangeText={(text) => {
-                 setPassword(text);
-                 setPasswordError(false);
-                 setApiError('');
-                 }}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    setPasswordError('');
+                    setApiError('');
+                  }}
                   secureTextEntry
-                  error={passwordError}
+                  error={!!passwordError}
                 />
+                {passwordError ? (
+                  <Text style={styles.fieldErrorText}>{passwordError}</Text>
+                ) : null}
               </View>
 
               <Button
@@ -175,8 +178,9 @@ export default function LoginScreen() {
               />
 
               {apiError ? (
-              <Text style={styles.apiErrorText}>{apiError}</Text>) : null}
-              
+                <Text style={styles.apiErrorText}>{apiError}</Text>
+              ) : null}
+
               <TouchableOpacity
                 style={styles.checkboxContainer}
                 onPress={() => setRememberMe(!rememberMe)}
@@ -190,9 +194,9 @@ export default function LoginScreen() {
 
               <View style={styles.registerContainer}>
                 <Text style={styles.registerText}>Não possui uma conta? </Text>
-                  <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/register')}>
-                    <Text style={styles.registerLink}>Registre-se</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/register')}>
+                  <Text style={styles.registerLink}>Registre-se</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -321,26 +325,6 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
   },
-  roleContainer: {
-    alignItems: 'center',
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  rolePill: {
-    borderRadius: borderRadius.full,
-    overflow: 'hidden',
-    ...shadows.medium,
-  },
-  rolePillGradient: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  rolePillText: {
-    ...typography.bodySmall,
-    color: colors.text,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
   registerContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -355,10 +339,16 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
+  fieldErrorText: {
+    color: '#FF6B6B',
+    fontSize: 12,
+    marginTop: 6,
+    marginLeft: 4,
+  },
   apiErrorText: {
-  ...typography.bodySmall,
-  color: '#FF6B6B',
-  marginTop: spacing.sm,
-  textAlign: 'center',
-},
+    ...typography.bodySmall,
+    color: '#FF6B6B',
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
 });

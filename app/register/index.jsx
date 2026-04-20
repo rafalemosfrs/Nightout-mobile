@@ -21,12 +21,12 @@ export default function RegisterScreen() {
         <Text style={styles.cardLabel}>Cliente</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => router.push('/register/artista')}>
+      <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => router.navigate('/register/artista')}>
         <MaterialCommunityIcons name="music-note" size={72} color="#C26AA0" />
         <Text style={styles.cardLabel}>Artista</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => router.push('/register/casashow')}>
+      <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => router.navigate('/register/casashow')}>
         <MaterialCommunityIcons name="office-building" size={72} color="#5B8CFF" />
         <Text style={styles.cardLabel}>Casa de Show</Text>
       </TouchableOpacity>
