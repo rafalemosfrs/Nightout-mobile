@@ -64,19 +64,33 @@ export default function LoginScreen() {
       setLoading(true);
 
       const data = await loginRequest({
-        email: email.trim().toLowerCase(),
-        senha: password,
-      });
+  email: email.trim().toLowerCase(),
+  senha: password,
+});
 
-      await AsyncStorage.setItem(
-        'user_session',
-        JSON.stringify({
-          token: data.token,
-          tipo: data.tipo,
-          nome: data.nome || '',
-          email: data.email || email.trim().toLowerCase(),
-        })
-      );
+console.log('LOGIN DATA:', JSON.stringify(data, null, 2));
+
+const nomeUsuario =
+  data?.nome ||
+  data?.user?.nome ||
+  data?.usuario?.nome ||
+  data?.cliente?.nome ||
+  '';
+
+await AsyncStorage.setItem(
+  'user_session',
+  JSON.stringify({
+    token: data.token,
+    tipo: data.tipo,
+    nome: nomeUsuario,
+    email:
+      data?.email ||
+      data?.user?.email ||
+      data?.usuario?.email ||
+      data?.cliente?.email ||
+      email.trim().toLowerCase(),
+  })
+);
 
       if (data.tipo === 'ARTISTA') {
         router.replace('/dashboards/artista');
