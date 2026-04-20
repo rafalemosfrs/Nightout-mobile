@@ -81,9 +81,9 @@ export default function LoginScreen() {
       if (data.tipo === 'ARTISTA') {
         router.replace('/dashboards/artista');
       } else if (data.tipo === 'CLIENTE') {
-        router.replace('/tabs');
+        router.replace('/dashboards/cliente');
       } else {
-        router.replace('/tabs');
+        router.replace('/dashboards/casashow');
       }
     } catch (error) {
       setApiError(error.message);
