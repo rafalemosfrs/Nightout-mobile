@@ -16,7 +16,7 @@ export default function RegisterScreen() {
 
       <Text style={styles.sectionTitle}>Selecione o tipo de conta</Text>
 
-      <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => router.push('/register/client')}>
+      <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => router.navigate('/register/client')}>
         <MaterialIcons name="person" size={72} color="#6EE56B" />
         <Text style={styles.cardLabel}>Cliente</Text>
       </TouchableOpacity>

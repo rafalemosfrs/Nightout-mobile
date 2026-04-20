@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Input from '../../components/Input';
@@ -15,138 +15,247 @@ export default function RegisterClientScreen() {
   const [dataNascimento, setDataNascimento] = useState('');
   const [preferencias, setPreferencias] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const [nomeError, setNomeError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [telefoneError, setTelefoneError] = useState('');
+  const [senhaError, setSenhaError] = useState('');
+  const [apelidoError, setApelidoError] = useState('');
+  const [dataNascimentoError, setDataNascimentoError] = useState('');
+  const [preferenciasError, setPreferenciasError] = useState('');
   const [apiError, setApiError] = useState('');
+
+  const clearFieldErrors = () => {
+    setNomeError('');
+    setEmailError('');
+    setTelefoneError('');
+    setSenhaError('');
+    setApelidoError('');
+    setDataNascimentoError('');
+    setPreferenciasError('');
+  };
 
   const validateEmail = (valor) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(valor);
   };
 
+  const validateTelefone = (valor) => {
+    const digits = valor.replace(/\D/g, '');
+    return digits.length >= 10 && digits.length <= 11;
+  };
+
+  const validateDataNascimento = (valor) => {
+    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!regex.test(valor.trim())) return false;
+
+    const [ano, mes, dia] = valor.split('-').map(Number);
+    const data = new Date(ano, mes - 1, dia);
+
+    return (
+      data.getFullYear() === ano &&
+      data.getMonth() === mes - 1 &&
+      data.getDate() === dia
+    );
+  };
+
   const handleRegister = async () => {
-  setApiError('');
+    clearFieldErrors();
+    setApiError('');
 
-  if (!nome.trim()) {
-    setApiError('Informe seu nome completo.');
-    return;
-  }
+    let hasError = false;
 
-  if (!email.trim() || !validateEmail(email)) {
-    setApiError('Informe um email válido.');
-    return;
-  }
+    if (!nome.trim()) {
+      setNomeError('Informe seu nome completo.');
+      hasError = true;
+    }
 
-  if (!senha || senha.length < 6) {
-    setApiError('A senha deve ter pelo menos 6 caracteres.');
-    return;
-  }
+    if (!email.trim() || !validateEmail(email)) {
+      setEmailError('Informe um email válido.');
+      hasError = true;
+    }
 
-  try {
-    setLoading(true);
+    if (!telefone.trim()) {
+      setTelefoneError('Informe o telefone.');
+      hasError = true;
+    } else if (!validateTelefone(telefone)) {
+      setTelefoneError('Informe um telefone válido com DDD.');
+      hasError = true;
+    }
 
-    const data = await registerClientRequest({
-      nome: nome.trim(),
-      email: email.trim().toLowerCase(),
-      senha,
-      telefone: telefone.trim() || undefined,
-      apelido: apelido.trim() || undefined,
-      preferencias: preferencias.trim() || undefined,
-      data_nascimento: dataNascimento.trim() || undefined,
-    });
+    if (!senha || senha.length < 6) {
+      setSenhaError('A senha deve ter pelo menos 6 caracteres.');
+      hasError = true;
+    }
 
-    Alert.alert('Sucesso', data.message || 'Cliente cadastrado com sucesso!');
-    router.replace('/');
-  } catch (error) {
-    setApiError(error.message);
-  } finally {
-    setLoading(false);
-  }
-};
+    if (!apelido.trim()) {
+      setApelidoError('Informe um apelido.');
+      hasError = true;
+    }
+
+    if (!dataNascimento.trim()) {
+      setDataNascimentoError('Informe a data de nascimento.');
+      hasError = true;
+    } else if (!validateDataNascimento(dataNascimento)) {
+      setDataNascimentoError('Use o formato YYYY-MM-DD.');
+      hasError = true;
+    }
+
+    if (!preferencias.trim()) {
+      setPreferenciasError('Informe suas preferências.');
+      hasError = true;
+    }
+
+    if (hasError) return;
+
+    try {
+      setLoading(true);
+
+      const data = await registerClientRequest({
+        nome: nome.trim(),
+        email: email.trim().toLowerCase(),
+        senha,
+        telefone: telefone.trim(),
+        apelido: apelido.trim(),
+        preferencias: preferencias.trim(),
+        data_nascimento: dataNascimento.trim(),
+      });
+
+      Alert.alert('Sucesso', data.message || 'Cliente cadastrado com sucesso!');
+      router.replace('/');
+    } catch (error) {
+      setApiError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <Ionicons name="chevron-back" size={34} color="#FFFFFF" />
-      </TouchableOpacity>
-
+    <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Cadastrar Cliente</Text>
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            activeOpacity={0.8}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          <Text style={styles.topBarTitle}>Cadastrar Cliente</Text>
+
+          <View style={styles.iconPlaceholder} />
+        </View>
 
         <View style={styles.form}>
-          <Input
-            label="Nome Completo"
-            placeholder="Nome completo"
-            value={nome}
-            onChangeText={(text) => {
-              setNome(text);
-              setApiError('');
-            }}
-          />
+          <View>
+            <Input
+              label="Nome Completo"
+              placeholder="Nome completo"
+              value={nome}
+              onChangeText={(text) => {
+                setNome(text);
+                setNomeError('');
+                setApiError('');
+              }}
+            />
+            {nomeError ? <Text style={styles.fieldErrorText}>{nomeError}</Text> : null}
+          </View>
 
-          <Input
-            label="Email"
-            placeholder="Email"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={(text) => {
-              setEmail(text);
-              setApiError('');
-            }}
-          />
+          <View>
+            <Input
+              label="Email"
+              placeholder="Email"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                setEmailError('');
+                setApiError('');
+              }}
+            />
+            {emailError ? <Text style={styles.fieldErrorText}>{emailError}</Text> : null}
+          </View>
 
-          <Input
-            label="Telefone"
-            placeholder="+55 85 99999-9999"
-            keyboardType="phone-pad"
-            value={telefone}
-            onChangeText={(text) => {
-              setTelefone(text);
-              setApiError('');
-            }}
-          />
+          <View>
+            <Input
+              label="Telefone"
+              placeholder="+55 85 99999-9999"
+              keyboardType="phone-pad"
+              value={telefone}
+              onChangeText={(text) => {
+                setTelefone(text);
+                setTelefoneError('');
+                setApiError('');
+              }}
+            />
+            {telefoneError ? <Text style={styles.fieldErrorText}>{telefoneError}</Text> : null}
+          </View>
 
-          <Input
-            label="Senha"
-            placeholder="Senha"
-            secureTextEntry
-            value={senha}
-            onChangeText={(text) => {
-              setSenha(text);
-              setApiError('');
-            }}
-          />
+          <View>
+            <Input
+              label="Senha"
+              placeholder="Senha"
+              secureTextEntry
+              value={senha}
+              onChangeText={(text) => {
+                setSenha(text);
+                setSenhaError('');
+                setApiError('');
+              }}
+            />
+            {senhaError ? <Text style={styles.fieldErrorText}>{senhaError}</Text> : null}
+          </View>
 
-          <Input
-            label="Apelido"
-            placeholder="Como prefere ser chamado"
-            value={apelido}
-            onChangeText={(text) => {
-              setApelido(text);
-              setApiError('');
-            }}
-          />
+          <View>
+            <Input
+              label="Apelido"
+              placeholder="Como prefere ser chamado"
+              value={apelido}
+              onChangeText={(text) => {
+                setApelido(text);
+                setApelidoError('');
+                setApiError('');
+              }}
+            />
+            {apelidoError ? <Text style={styles.fieldErrorText}>{apelidoError}</Text> : null}
+          </View>
 
-          <Input
-            label="Data de Nascimento"
-            placeholder="2006-03-31"
-            value={dataNascimento}
-            onChangeText={(text) => {
-              setDataNascimento(text);
-              setApiError('');
-            }}
-          />
+          <View>
+            <Input
+              label="Data de Nascimento"
+              placeholder="2006-03-31"
+              value={dataNascimento}
+              onChangeText={(text) => {
+                setDataNascimento(text);
+                setDataNascimentoError('');
+                setApiError('');
+              }}
+            />
+            {dataNascimentoError ? (
+              <Text style={styles.fieldErrorText}>{dataNascimentoError}</Text>
+            ) : null}
+          </View>
 
-          <Input
-            label="Preferências"
-            placeholder="Estilos musicais, tipos de eventos, etc."
-            value={preferencias}
-            onChangeText={(text) => {
-              setPreferencias(text);
-              setApiError('');
-            }}
-          />
+          <View>
+            <Input
+              label="Preferências"
+              placeholder="Estilos musicais, tipos de eventos, etc."
+              value={preferencias}
+              onChangeText={(text) => {
+                setPreferencias(text);
+                setPreferenciasError('');
+                setApiError('');
+              }}
+            />
+            {preferenciasError ? (
+              <Text style={styles.fieldErrorText}>{preferenciasError}</Text>
+            ) : null}
+          </View>
         </View>
 
         {apiError ? (
@@ -160,7 +269,7 @@ export default function RegisterClientScreen() {
           style={styles.submitButton}
         />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -169,29 +278,43 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#031533',
   },
-  backButton: {
-    position: 'absolute',
-    top: 48,
-    left: 16,
-    zIndex: 10,
-  },
   content: {
-    paddingTop: 84,
-    paddingHorizontal: 28,
+    padding: 22,
     paddingBottom: 40,
   },
-  title: {
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 32,
+  },
+  topBarTitle: {
     color: '#FFFFFF',
     fontSize: 22,
     fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 32,
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconPlaceholder: {
+    width: 40,
+    height: 40,
   },
   form: {
     gap: 18,
   },
   submitButton: {
     marginTop: 36,
+  },
+  fieldErrorText: {
+    color: '#FF6B6B',
+    fontSize: 12,
+    marginTop: 6,
+    marginLeft: 4,
   },
   apiErrorText: {
     color: '#FF6B6B',
