@@ -51,3 +51,12 @@ export function registerCasaShowRequest(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function getCasaShowDashboardRequest(token) {
+  return request("/casadeshow/dashboard", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}

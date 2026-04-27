@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCasaShowDashboardRequest } from '../../services/api';
 import {
   colors,
   spacing,
@@ -18,7 +20,7 @@ import {
   shadows,
 } from '../../constants/theme';
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const WEEK_DAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 const MONTH_NAMES = [
@@ -181,12 +183,20 @@ function buildDashboardData(casaPayload) {
   };
 }
 
-async function getCasaShowDashboardData() {
+async function getCasaShowDashboardData(token) {
   if (USE_MOCK) {
     return buildDashboardData(casaDeShowMock);
   }
 
-  return buildDashboardData(casaDeShowMock);
+  const response = await getCasaShowDashboardRequest(token);
+  
+  return {
+    casa: normalizeCasaDeShowPayload(response?.casa || response),
+    resumo: response?.resumo || dashboardUiMock.resumo,
+    proximoEvento: response?.proximoEvento || dashboardUiMock.proximoEvento,
+    propostasCasa: response?.propostasCasa || dashboardUiMock.propostasCasa,
+    calendario: response?.calendario || dashboardUiMock.calendario,
+  };
 }
 
 function buildCalendarMatrix(month, year) {
@@ -229,7 +239,16 @@ export default function CasaShowDashboardScreen() {
   useEffect(() => {
     async function loadDashboard() {
       try {
-        const data = await getCasaShowDashboardData();
+        setLoading(true);
+        const sessionString = await AsyncStorage.getItem('user_session');
+        const session = sessionString ? JSON.parse(sessionString) : null;
+        const token = session?.token;
+        
+        if (!token && !USE_MOCK) {
+           throw new Error('Usuário não autenticado');
+        }
+
+        const data = await getCasaShowDashboardData(token);
         setDashboard(data);
         setSelectedDay(data?.calendario?.diaSelecionado || null);
       } catch (error) {
