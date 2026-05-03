@@ -322,7 +322,7 @@ export default function CasaShowDashboardScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/profile')}
+            onPress={() => router.push('/profile-casa-show')}
           >
             <Ionicons name="person-outline" size={20} color={colors.text} />
           </TouchableOpacity>
