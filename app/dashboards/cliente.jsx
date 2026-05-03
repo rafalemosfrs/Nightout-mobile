@@ -147,7 +147,7 @@ export default function ClientDashboardScreen() {
           <TouchableOpacity
             style={styles.actionButton}
             activeOpacity={0.85}
-            onPress={() => router.push('/(tabs)/profile')}
+            onPress={() => router.push('/profile-costumer')}
           >
             <Ionicons name="person-outline" size={18} color={colors.text} />
             <Text style={styles.actionText}>Perfil</Text>
