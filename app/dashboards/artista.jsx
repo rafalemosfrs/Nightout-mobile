@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   SafeAreaView,
   StyleSheet,
@@ -11,94 +12,17 @@ import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
+  getArtists,
+  getArtistProposals,
+  getEvents,
+} from '../../services/api';
+import {
   colors,
   spacing,
   borderRadius,
   typography,
   shadows,
 } from '../../constants/theme';
-
-const dashboardMock = {
-  artista: {
-    id: 'artista-id-aqui',
-    nome: 'Du e Bielzin',
-    genero: 'Forró',
-    cidade: 'Fortaleza, CE',
-    avatarLabel: 'DB',
-  },
-  resumo: {
-    saldoMes: 0,
-    showsMes: 0,
-    proximosEventos: 3,
-    totalAcumulado: 416005.08,
-  },
-  saldoUltimosMeses: [
-    { mes: 'SET.', valor: 0 },
-    { mes: 'OUT.', valor: 0 },
-    { mes: 'NOV.', valor: 5.08 },
-    { mes: 'DEZ.', valor: 416000 },
-    { mes: 'JAN.', valor: 0 },
-    { mes: 'FEV.', valor: 0 },
-  ],
-  showsUltimosMeses: [
-    { mes: 'S', quantidade: 0 },
-    { mes: 'O', quantidade: 0 },
-    { mes: 'N', quantidade: 2 },
-    { mes: 'D', quantidade: 6 },
-    { mes: 'J', quantidade: 0 },
-    { mes: 'F', quantidade: 0 },
-  ],
-  proximosEventos: [
-    {
-      id: 'evt-1',
-      data: '24 NOV',
-      titulo: 'Terapia sem fim com Nattan',
-      local: 'Av. Bezerra de Menezes',
-      hora: '22:21',
-      cache: 5,
-      status: 'Confirmado',
-    },
-    {
-      id: 'evt-2',
-      data: '25 NOV',
-      titulo: 'Festa',
-      local: 'Rua PI',
-      hora: '00:20',
-      cache: 0.08,
-      status: 'Pendente',
-    },
-    {
-      id: 'evt-3',
-      data: '30 NOV',
-      titulo: 'Tech Du e Biel',
-      local: 'Av. Washington Soares',
-      hora: '23:59',
-      cache: 30000,
-      status: 'Confirmado',
-    },
-  ],
-  estabelecimentosRecentes: [
-    {
-      id: 'venue-1',
-      nome: 'Living',
-      nota: 4.8,
-    },
-  ],
-  propostasRecentes: [
-    {
-      id: 'prop-1',
-      titulo: 'Proposta Casa Living',
-      valor: 15000,
-      status: 'PENDENTE',
-    },
-    {
-      id: 'prop-2',
-      titulo: 'Proposta Festival Beira Mar',
-      valor: 18000,
-      status: 'ACEITA',
-    },
-  ],
-};
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', {
@@ -118,6 +42,7 @@ function getMaxShows(items) {
 function getStatusStyle(status) {
   switch (status) {
     case 'ACEITA':
+    case 'Aceita':
     case 'Confirmado':
       return styles.statusSuccess;
     case 'PENDENTE':
@@ -140,41 +65,317 @@ function getAvatarLabel(nome) {
   return `${partes[0][0]}${partes[1][0]}`.toUpperCase();
 }
 
+function buildEmptySixMonthsBalance() {
+  return [
+    { mes: 'SET.', valor: 0 },
+    { mes: 'OUT.', valor: 0 },
+    { mes: 'NOV.', valor: 0 },
+    { mes: 'DEZ.', valor: 0 },
+    { mes: 'JAN.', valor: 0 },
+    { mes: 'FEV.', valor: 0 },
+  ];
+}
+
+function buildEmptySixMonthsShows() {
+  return [
+    { mes: 'S', quantidade: 0 },
+    { mes: 'O', quantidade: 0 },
+    { mes: 'N', quantidade: 0 },
+    { mes: 'D', quantidade: 0 },
+    { mes: 'J', quantidade: 0 },
+    { mes: 'F', quantidade: 0 },
+  ];
+}
+
+function buildLastSixMonthsStats(events) {
+  const now = new Date();
+  const months = [];
+
+  for (let i = 5; i >= 0; i -= 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+
+    months.push({
+      year: d.getFullYear(),
+      month: d.getMonth(),
+      short: d
+        .toLocaleDateString('pt-BR', { month: 'short' })
+        .replace('.', '')
+        .toUpperCase(),
+    });
+  }
+
+  return {
+    saldoUltimosMeses: months.map((m) => {
+      const total = events
+        .filter((event) => {
+          if (!event.data_inicio) return false;
+          const eventDate = new Date(event.data_inicio);
+          return (
+            eventDate.getFullYear() === m.year &&
+            eventDate.getMonth() === m.month
+          );
+        })
+        .reduce((acc, event) => acc + Number(event.cache || 0), 0);
+
+      return {
+        mes: `${m.short}.`,
+        valor: total,
+      };
+    }),
+    showsUltimosMeses: months.map((m) => {
+      const total = events.filter((event) => {
+        if (!event.data_inicio) return false;
+        const eventDate = new Date(event.data_inicio);
+        return (
+          eventDate.getFullYear() === m.year &&
+          eventDate.getMonth() === m.month
+        );
+      }).length;
+
+      return {
+        mes: m.short.charAt(0),
+        quantidade: total,
+      };
+    }),
+  };
+}
+
+async function getArtistDashboardData() {
+  const stored = await AsyncStorage.getItem('user_session');
+
+  if (!stored) {
+    throw new Error('Sessão não encontrada.');
+  }
+
+  const session = JSON.parse(stored);
+
+  if (!session?.token || !session?.email) {
+    throw new Error('Sessão inválida.');
+  }
+
+  const artistsRes = await getArtists(session.token);
+
+  const artists = Array.isArray(artistsRes)
+    ? artistsRes
+    : artistsRes?.items || artistsRes?.artistas || [];
+
+  const artistaLogado =
+    artists.find(
+      (artist) => artist?.email?.toLowerCase() === session.email.toLowerCase()
+    ) || null;
+
+  if (!artistaLogado) {
+    throw new Error('Artista logado não encontrado.');
+  }
+
+  const artistaId = artistaLogado.id || artistaLogado.id_usuario;
+
+  try {
+    const [propostasRes, eventosRes] = await Promise.all([
+      getArtistProposals(session.token),
+      getEvents(session.token),
+    ]);
+
+    const propostas = Array.isArray(propostasRes)
+      ? propostasRes
+      : propostasRes?.items || [];
+
+    const rawEvents = Array.isArray(eventosRes)
+      ? eventosRes
+      : eventosRes?.eventos || eventosRes?.items || [];
+
+    const propostasDoArtista = propostas.filter((p) => p.aceito === artistaId);
+
+    const eventosMap = rawEvents.reduce((acc, ev) => {
+      acc[ev.id_evento || ev.id] = ev;
+      return acc;
+    }, {});
+
+    const proximosEventos = propostasDoArtista
+      .map((p) => {
+        const evento = eventosMap[p.id_evento];
+        if (!evento) return null;
+
+        const start = evento.data_inicio ? new Date(evento.data_inicio) : null;
+
+        const data = start
+          ? start
+              .toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: 'short',
+              })
+              .replace('.', '')
+              .toUpperCase()
+          : '';
+
+        const hora = start
+          ? start.toLocaleTimeString('pt-BR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '';
+
+        return {
+          id: evento.id_evento || evento.id,
+          data,
+          titulo: evento.titulo || 'Evento sem título',
+          local: evento.local || 'Local a definir',
+          hora,
+          cache: p.valor_ofertado || 0,
+          status: p.status || 'Confirmado',
+          data_inicio: evento.data_inicio || null,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const dateA = a.data_inicio ? new Date(a.data_inicio) : new Date();
+        const dateB = b.data_inicio ? new Date(b.data_inicio) : new Date();
+        return dateA - dateB;
+      });
+
+    const now = new Date();
+    const showsDoMes = proximosEventos.filter((evento) => {
+      if (!evento.data_inicio) return false;
+      const d = new Date(evento.data_inicio);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+
+    const saldoMes = showsDoMes.reduce(
+      (acc, item) => acc + Number(item.cache || 0),
+      0
+    );
+
+    const totalAcumulado = proximosEventos.reduce(
+      (acc, item) => acc + Number(item.cache || 0),
+      0
+    );
+
+    const { saldoUltimosMeses, showsUltimosMeses } =
+      buildLastSixMonthsStats(proximosEventos);
+
+    return {
+      warning: '',
+      artista: {
+        id: artistaId,
+        nome:
+          artistaLogado.nome_artista ||
+          artistaLogado.nome ||
+          session.nome ||
+          session.email,
+        genero: artistaLogado.genero_musical || 'Não informado',
+        cidade: 'Fortaleza, CE',
+      },
+      resumo: {
+        saldoMes,
+        showsMes: showsDoMes.length,
+        proximosEventos: proximosEventos.length,
+        totalAcumulado,
+      },
+      saldoUltimosMeses,
+      showsUltimosMeses,
+      proximosEventos,
+      estabelecimentosRecentes: [],
+      propostasRecentes: propostasDoArtista
+        .slice()
+        .sort((a, b) => {
+          const dateA = a.data_proposta ? new Date(a.data_proposta) : new Date(0);
+          const dateB = b.data_proposta ? new Date(b.data_proposta) : new Date(0);
+          return dateB - dateA;
+        })
+        .slice(0, 5)
+        .map((p) => ({
+          id: p.id_proposta_artista || `${p.id_evento}-${p.id_casa || 'casa'}`,
+          titulo: `Proposta evento ${p.id_evento}`,
+          valor: p.valor_ofertado || 0,
+          status: p.status || 'PENDENTE',
+        })),
+    };
+  } catch (error) {
+    console.log('Fallback do dashboard de artista ativado:', error?.message || error);
+
+    return {
+      warning: 'Eventos e propostas estão indisponíveis no momento.',
+      artista: {
+        id: artistaId,
+        nome:
+          artistaLogado.nome_artista ||
+          artistaLogado.nome ||
+          session.nome ||
+          session.email,
+        genero: artistaLogado.genero_musical || 'Não informado',
+        cidade: 'Fortaleza, CE',
+      },
+      resumo: {
+        saldoMes: 0,
+        showsMes: 0,
+        proximosEventos: 0,
+        totalAcumulado: 0,
+      },
+      saldoUltimosMeses: buildEmptySixMonthsBalance(),
+      showsUltimosMeses: buildEmptySixMonthsShows(),
+      proximosEventos: [],
+      estabelecimentosRecentes: [],
+      propostasRecentes: [],
+    };
+  }
+}
+
 export default function ArtistDashboardScreen() {
-  const [sessionUser, setSessionUser] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadSession() {
+    async function loadDashboard() {
       try {
-        const stored = await AsyncStorage.getItem('user_session');
-
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setSessionUser(parsed);
-        }
+        const data = await getArtistDashboardData();
+        setDashboard(data);
       } catch (error) {
-        console.log('Erro ao carregar sessão', error);
+        console.log('Erro ao carregar dashboard do artista:', error?.message || error);
+      } finally {
+        setLoading(false);
       }
     }
 
-    loadSession();
+    loadDashboard();
   }, []);
 
   const data = useMemo(() => {
-    const nomeFinal =
-      sessionUser?.nome?.trim() ||
-      sessionUser?.email ||
-      dashboardMock.artista.nome;
+    if (!dashboard) return null;
+
+    const nomeFinal = dashboard?.artista?.nome?.trim() || 'Artista';
 
     return {
-      ...dashboardMock,
+      ...dashboard,
       artista: {
-        ...dashboardMock.artista,
+        ...dashboard.artista,
         nome: nomeFinal,
         avatarLabel: getAvatarLabel(nomeFinal),
       },
     };
-  }, [sessionUser]);
+  }, [dashboard]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!data) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>
+            Não foi possível carregar a dashboard.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const maxSaldo = getMaxSaldo(data.saldoUltimosMeses);
   const maxShows = getMaxShows(data.showsUltimosMeses);
@@ -232,6 +433,12 @@ export default function ArtistDashboardScreen() {
             </View>
           </View>
         </View>
+
+        {data.warning ? (
+          <View style={styles.warningCard}>
+            <Text style={styles.warningText}>{data.warning}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.quickActions}>
           <TouchableOpacity style={styles.actionButton} activeOpacity={0.85}>
@@ -302,7 +509,10 @@ export default function ArtistDashboardScreen() {
           </View>
 
           {data.saldoUltimosMeses.map((item) => {
-            const widthPercent = `${Math.max((item.valor / maxSaldo) * 100, item.valor > 0 ? 6 : 0)}%`;
+            const widthPercent = `${Math.max(
+              (item.valor / maxSaldo) * 100,
+              item.valor > 0 ? 6 : 0
+            )}%`;
 
             return (
               <View key={item.mes} style={styles.balanceRow}>
@@ -327,7 +537,10 @@ export default function ArtistDashboardScreen() {
 
           <View style={styles.chartArea}>
             {data.showsUltimosMeses.map((item) => {
-              const height = `${Math.max((item.quantidade / maxShows) * 100, item.quantidade > 0 ? 8 : 3)}%`;
+              const height = `${Math.max(
+                (item.quantidade / maxShows) * 100,
+                item.quantidade > 0 ? 8 : 3
+              )}%`;
 
               return (
                 <View key={item.mes} style={styles.chartColumn}>
@@ -350,43 +563,47 @@ export default function ArtistDashboardScreen() {
             <Text style={styles.sectionTitle}>Próximos eventos</Text>
           </View>
 
-          {data.proximosEventos.map((evento) => (
-            <View key={evento.id} style={styles.eventCard}>
-              <View style={styles.eventDateBox}>
-                <Text style={styles.eventDateText}>{evento.data}</Text>
-              </View>
-
-              <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle}>{evento.titulo}</Text>
-
-                <View style={styles.inlineRow}>
-                  <Ionicons
-                    name="location-outline"
-                    size={14}
-                    color={colors.textSecondary}
-                  />
-                  <Text style={styles.eventMeta}>{evento.local}</Text>
+          {data.proximosEventos.length > 0 ? (
+            data.proximosEventos.map((evento) => (
+              <View key={evento.id} style={styles.eventCard}>
+                <View style={styles.eventDateBox}>
+                  <Text style={styles.eventDateText}>{evento.data}</Text>
                 </View>
 
-                <View style={styles.eventFooter}>
+                <View style={styles.eventInfo}>
+                  <Text style={styles.eventTitle}>{evento.titulo}</Text>
+
                   <View style={styles.inlineRow}>
                     <Ionicons
-                      name="time-outline"
+                      name="location-outline"
                       size={14}
                       color={colors.textSecondary}
                     />
-                    <Text style={styles.eventMeta}>{evento.hora}</Text>
+                    <Text style={styles.eventMeta}>{evento.local}</Text>
                   </View>
 
-                  <Text style={styles.eventCache}>{formatCurrency(evento.cache)}</Text>
+                  <View style={styles.eventFooter}>
+                    <View style={styles.inlineRow}>
+                      <Ionicons
+                        name="time-outline"
+                        size={14}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={styles.eventMeta}>{evento.hora}</Text>
+                    </View>
+
+                    <Text style={styles.eventCache}>{formatCurrency(evento.cache)}</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.statusBadge, getStatusStyle(evento.status)]}>
+                  <Text style={styles.statusText}>{evento.status}</Text>
                 </View>
               </View>
-
-              <View style={[styles.statusBadge, getStatusStyle(evento.status)]}>
-                <Text style={styles.statusText}>{evento.status}</Text>
-              </View>
-            </View>
-          ))}
+            ))
+          ) : (
+            <Text style={styles.emptyText}>Nenhum evento disponível.</Text>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -399,26 +616,30 @@ export default function ArtistDashboardScreen() {
             <Text style={styles.sectionTitle}>Estabelecimentos recentes</Text>
           </View>
 
-          {data.estabelecimentosRecentes.map((item) => (
-            <View key={item.id} style={styles.venueCard}>
-              <View style={styles.venueIcon}>
-                <MaterialCommunityIcons
-                  name="office-building"
-                  size={20}
-                  color={colors.secondary}
-                />
-              </View>
+          {data.estabelecimentosRecentes.length > 0 ? (
+            data.estabelecimentosRecentes.map((item) => (
+              <View key={item.id} style={styles.venueCard}>
+                <View style={styles.venueIcon}>
+                  <MaterialCommunityIcons
+                    name="office-building"
+                    size={20}
+                    color={colors.secondary}
+                  />
+                </View>
 
-              <View style={styles.venueInfo}>
-                <Text style={styles.venueName}>{item.nome}</Text>
-              </View>
+                <View style={styles.venueInfo}>
+                  <Text style={styles.venueName}>{item.nome}</Text>
+                </View>
 
-              <View style={styles.ratingBadge}>
-                <Ionicons name="star" size={14} color="#F59E0B" />
-                <Text style={styles.ratingText}>{item.nota}</Text>
+                <View style={styles.ratingBadge}>
+                  <Ionicons name="star" size={14} color="#F59E0B" />
+                  <Text style={styles.ratingText}>{item.nota}</Text>
+                </View>
               </View>
-            </View>
-          ))}
+            ))
+          ) : (
+            <Text style={styles.emptyText}>Nenhum estabelecimento recente.</Text>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -427,20 +648,24 @@ export default function ArtistDashboardScreen() {
             <Text style={styles.sectionTitle}>Propostas recentes</Text>
           </View>
 
-          {data.propostasRecentes.map((proposta) => (
-            <View key={proposta.id} style={styles.proposalCard}>
-              <View style={styles.proposalInfo}>
-                <Text style={styles.proposalTitle}>{proposta.titulo}</Text>
-                <Text style={styles.proposalValue}>
-                  {formatCurrency(proposta.valor)}
-                </Text>
-              </View>
+          {data.propostasRecentes.length > 0 ? (
+            data.propostasRecentes.map((proposta) => (
+              <View key={proposta.id} style={styles.proposalCard}>
+                <View style={styles.proposalInfo}>
+                  <Text style={styles.proposalTitle}>{proposta.titulo}</Text>
+                  <Text style={styles.proposalValue}>
+                    {formatCurrency(proposta.valor)}
+                  </Text>
+                </View>
 
-              <View style={[styles.statusBadge, getStatusStyle(proposta.status)]}>
-                <Text style={styles.statusText}>{proposta.status}</Text>
+                <View style={[styles.statusBadge, getStatusStyle(proposta.status)]}>
+                  <Text style={styles.statusText}>{proposta.status}</Text>
+                </View>
               </View>
-            </View>
-          ))}
+            ))
+          ) : (
+            <Text style={styles.emptyText}>Nenhuma proposta disponível.</Text>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -455,6 +680,32 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+  warningCard: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  warningText: {
+    ...typography.bodySmall,
+    color: '#F59E0B',
+    fontWeight: '600',
   },
   topBar: {
     flexDirection: 'row',
@@ -842,5 +1093,9 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.text,
     fontWeight: '700',
+  },
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
   },
 });
