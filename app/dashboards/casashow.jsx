@@ -11,7 +11,7 @@ import {
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { getCasaShowDashboardRequest } from '../../services/api';
+import { getCasaShows, getEvents, getArtistProposals } from '../../services/api';
 import {
   colors,
   spacing,
@@ -19,8 +19,6 @@ import {
   typography,
   shadows,
 } from '../../constants/theme';
-
-const USE_MOCK = false;
 
 const WEEK_DAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 const MONTH_NAMES = [
@@ -38,122 +36,10 @@ const MONTH_NAMES = [
   'Dezembro',
 ];
 
-const casaDeShowMock = {
-  id_usuario: 'casa-show-001',
-  nome_fantasia: 'Living Music Hall',
-  cnpj: '12.345.678/0001-90',
-  capacidade: '1200',
-  endereco: 'Av. Beira Mar, 1200',
-  bairro: 'Meireles',
-  estado: 'CE',
-  cep: '60165-121',
-  geo_lat: '-3.7319',
-  geo_lng: '-38.5267',
-  usuario: {
-    nome: 'Living Entretenimento',
-    email: 'contato@living.com',
-    telefone: '+55 85 99999-0000',
-    tipo: 'CASASHOW',
-  },
-};
-
-const dashboardUiMock = {
-  resumo: {
-    eventosCasa: 12,
-    proximosEventos: 4,
-    propostasEnviadas: 9,
-    propostasAceitas: 5,
-  },
-  proximoEvento: {
-    id: 'evt-next-1',
-    titulo: 'Noite do Piseiro',
-    data: '24 de Fevereiro • 22:00',
-    local: 'Av. Beira Mar, 1200 • Meireles',
-  },
-  propostasCasa: [
-    {
-      id: 'prop-1',
-      artista: 'Du e Bielzin',
-      data: '24/02/2026',
-      status: 'Aceita',
-    },
-    {
-      id: 'prop-2',
-      artista: 'DJ Mari',
-      data: '27/02/2026',
-      status: 'Pendente',
-    },
-    {
-      id: 'prop-3',
-      artista: 'Forró Vybbe',
-      data: '03/03/2026',
-      status: 'Pendente',
-    },
-  ],
-  calendario: {
-    mes: 2,
-    ano: 2026,
-    diaSelecionado: 24,
-    diasComEvento: [7, 14, 24, 27],
-    eventosPorDia: {
-      7: [
-        {
-          id: 'cal-7-1',
-          titulo: 'Sexta do Trap',
-          horario: '21:30',
-          artista: 'MC A7',
-          status: 'Confirmado',
-        },
-      ],
-      14: [
-        {
-          id: 'cal-14-1',
-          titulo: 'Especial Carnaval',
-          horario: '23:00',
-          artista: 'Banda Swing Total',
-          status: 'Confirmado',
-        },
-        {
-          id: 'cal-14-2',
-          titulo: 'After Open Format',
-          horario: '02:00',
-          artista: 'DJ Gabi',
-          status: 'Confirmado',
-        },
-      ],
-      24: [
-        {
-          id: 'cal-24-1',
-          titulo: 'Noite do Piseiro',
-          horario: '22:00',
-          artista: 'Du e Bielzin',
-          status: 'Confirmado',
-        },
-        {
-          id: 'cal-24-2',
-          titulo: 'Aquecimento do Evento',
-          horario: '20:30',
-          artista: 'DJ Nanda',
-          status: 'Confirmado',
-        },
-      ],
-      27: [
-        {
-          id: 'cal-27-1',
-          titulo: 'Baile Funk Premium',
-          horario: '23:30',
-          artista: 'DJ Mari',
-          status: 'Pendente',
-        },
-      ],
-    },
-  },
-};
-
 function normalizeCasaDeShowPayload(payload = {}) {
   return {
-    id_usuario: payload?.id_usuario || '',
-    nome_fantasia: payload?.nome_fantasia || '',
+    id_usuario: payload?.id_usuario || payload?.id_casa || payload?.id || '',
+    nome_fantasia: payload?.nome_fantasia || payload?.nome || '',
     cnpj: payload?.cnpj || '',
     capacidade: payload?.capacidade || '',
     endereco: payload?.endereco || '',
@@ -163,34 +49,172 @@ function normalizeCasaDeShowPayload(payload = {}) {
     geo_lat: payload?.geo_lat || '',
     geo_lng: payload?.geo_lng || '',
     usuario: {
-      nome: payload?.usuario?.nome || '',
-      email: payload?.usuario?.email || '',
-      telefone: payload?.usuario?.telefone || '',
+      nome: payload?.usuario?.nome || payload?.nome || '',
+      email: payload?.usuario?.email || payload?.email || '',
+      telefone: payload?.usuario?.telefone || payload?.telefone || '',
       tipo: payload?.usuario?.tipo || 'CASASHOW',
     },
   };
 }
 
-function buildDashboardData(apiPayload) {
-  const casa = normalizeCasaDeShowPayload(apiPayload?.casa || apiPayload);
+async function getCasaShowDashboardData() {
+  const stored = await AsyncStorage.getItem('user_session');
 
-  return {
-    casa,
-    resumo: apiPayload?.resumo || dashboardUiMock.resumo,
-    proximoEvento: apiPayload?.proximoEvento || dashboardUiMock.proximoEvento,
-    propostasCasa: apiPayload?.propostasCasa || dashboardUiMock.propostasCasa,
-    calendario: apiPayload?.calendario || dashboardUiMock.calendario,
-  };
-}
-
-async function getCasaShowDashboardData(token) {
-  if (USE_MOCK) {
-    return buildDashboardData(casaDeShowMock);
+  if (!stored) {
+    throw new Error('Sessão não encontrada.');
   }
 
-  if (!token) throw new Error("Token não fornecido");
-  const response = await getCasaShowDashboardRequest(token);
-  return buildDashboardData(response);
+  const session = JSON.parse(stored);
+
+  if (!session?.token || !session?.email) {
+    throw new Error('Sessão inválida.');
+  }
+
+  const casasRes = await getCasaShows(session.token);
+
+  const casas = Array.isArray(casasRes)
+    ? casasRes
+    : casasRes?.items || casasRes?.casas || casasRes?.casasdeshow || [];
+
+  const casaLogada =
+    casas.find(
+      (c) => c?.email?.toLowerCase() === session.email.toLowerCase() ||
+             c?.usuario?.email?.toLowerCase() === session.email.toLowerCase()
+    ) || null;
+
+  if (!casaLogada) {
+    throw new Error('Casa de show logada não encontrada.');
+  }
+
+  const casaId = casaLogada.id || casaLogada.id_usuario || casaLogada.id_casa;
+
+  try {
+    const [eventosRes, propostasRes] = await Promise.all([
+      getEvents(session.token),
+      getArtistProposals(session.token),
+    ]);
+
+    const rawEvents = Array.isArray(eventosRes)
+      ? eventosRes
+      : eventosRes?.eventos || eventosRes?.items || [];
+
+    const propostas = Array.isArray(propostasRes)
+      ? propostasRes
+      : propostasRes?.items || [];
+
+    const eventosDaCasa = rawEvents.filter(
+      (ev) => ev.id_casa === casaId || ev.id_usuario === casaId || ev.casa_de_show_id === casaId
+    );
+
+    const eventosIds = eventosDaCasa.map(ev => ev.id_evento || ev.id);
+
+    const propostasDaCasa = propostas.filter((p) => eventosIds.includes(p.id_evento));
+
+    const eventosCasaCount = eventosDaCasa.length;
+    const now = new Date();
+    
+    const proximosEventosArray = eventosDaCasa.filter(ev => {
+      if (!ev.data_inicio) return false;
+      return new Date(ev.data_inicio) >= now;
+    }).sort((a, b) => new Date(a.data_inicio) - new Date(b.data_inicio));
+
+    const proximosEventosCount = proximosEventosArray.length;
+
+    const propostasEnviadasCount = propostasDaCasa.length;
+    const propostasAceitasCount = propostasDaCasa.filter(
+      (p) => p.status === 'ACEITA' || p.status === 'Aceita' || p.status === 'Confirmado'
+    ).length;
+
+    let proximoEvento = null;
+    if (proximosEventosArray.length > 0) {
+      const nextEv = proximosEventosArray[0];
+      const start = new Date(nextEv.data_inicio);
+      proximoEvento = {
+        id: nextEv.id_evento || nextEv.id,
+        titulo: nextEv.titulo || 'Evento sem título',
+        data: start.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }) + ' • ' + start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        local: nextEv.local || casaLogada.endereco || 'Local a definir',
+      };
+    }
+
+    const propostasRecentes = propostasDaCasa.slice(0, 3).map(p => {
+      const start = p.data_proposta || p.data_evento || p.data_inicio ? new Date(p.data_proposta || p.data_evento || p.data_inicio) : null;
+      return {
+        id: p.id_proposta_artista || `${p.id_evento}-${p.id_artista || 'artista'}`,
+        artista: p.nome_artista || `Artista ${p.id_artista || ''}`,
+        data: start ? start.toLocaleDateString('pt-BR') : 'Data a definir',
+        status: p.status || 'Pendente',
+      };
+    });
+
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    const diasComEvento = [];
+    const eventosPorDia = {};
+
+    eventosDaCasa.forEach(ev => {
+      if (ev.data_inicio) {
+        const d = new Date(ev.data_inicio);
+        if (d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear) {
+          const day = d.getDate();
+          if (!diasComEvento.includes(day)) {
+            diasComEvento.push(day);
+          }
+          if (!eventosPorDia[day]) {
+            eventosPorDia[day] = [];
+          }
+          eventosPorDia[day].push({
+            id: ev.id_evento || ev.id,
+            titulo: ev.titulo || 'Evento sem título',
+            horario: d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            artista: ev.artista || 'Diversos',
+            status: 'Confirmado',
+          });
+        }
+      }
+    });
+
+    return {
+      casa: normalizeCasaDeShowPayload(casaLogada),
+      resumo: {
+        eventosCasa: eventosCasaCount,
+        proximosEventos: proximosEventosCount,
+        propostasEnviadas: propostasEnviadasCount,
+        propostasAceitas: propostasAceitasCount,
+      },
+      proximoEvento,
+      propostasCasa: propostasRecentes,
+      calendario: {
+        mes: currentMonth,
+        ano: currentYear,
+        diaSelecionado: now.getDate(),
+        diasComEvento,
+        eventosPorDia,
+      },
+    };
+  } catch (error) {
+    console.log('Fallback do dashboard de casa de show ativado:', error?.message || error);
+    
+    return {
+      casa: normalizeCasaDeShowPayload(casaLogada),
+      resumo: {
+        eventosCasa: 0,
+        proximosEventos: 0,
+        propostasEnviadas: 0,
+        propostasAceitas: 0,
+      },
+      proximoEvento: null,
+      propostasCasa: [],
+      calendario: {
+        mes: new Date().getMonth() + 1,
+        ano: new Date().getFullYear(),
+        diaSelecionado: new Date().getDate(),
+        diasComEvento: [],
+        eventosPorDia: {},
+      },
+    };
+  }
 }
 
 function buildCalendarMatrix(month, year) {
@@ -236,8 +260,7 @@ export default function CasaShowDashboardScreen() {
         const stored = await AsyncStorage.getItem('user_session');
         if (!stored) throw new Error('Sessão não encontrada');
         
-        const session = JSON.parse(stored);
-        const data = await getCasaShowDashboardData(session.token);
+        const data = await getCasaShowDashboardData();
         
         setDashboard(data);
         setSelectedDay(data?.calendario?.diaSelecionado || null);

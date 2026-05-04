@@ -105,3 +105,12 @@ export function getEvents(token) {
     },
   });
 }
+
+export function getCasaShows(token) {
+  return request("/casadeshow?page=1&pageSize=1000", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
