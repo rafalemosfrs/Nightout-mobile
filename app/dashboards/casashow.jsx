@@ -9,7 +9,9 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { getCasaShowDashboardRequest } from '../../services/api';
 import {
   colors,
   spacing,
@@ -18,7 +20,7 @@ import {
   shadows,
 } from '../../constants/theme';
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const WEEK_DAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 const MONTH_NAMES = [
@@ -169,24 +171,26 @@ function normalizeCasaDeShowPayload(payload = {}) {
   };
 }
 
-function buildDashboardData(casaPayload) {
-  const casa = normalizeCasaDeShowPayload(casaPayload);
+function buildDashboardData(apiPayload) {
+  const casa = normalizeCasaDeShowPayload(apiPayload?.casa || apiPayload);
 
   return {
     casa,
-    resumo: dashboardUiMock.resumo,
-    proximoEvento: dashboardUiMock.proximoEvento,
-    propostasCasa: dashboardUiMock.propostasCasa,
-    calendario: dashboardUiMock.calendario,
+    resumo: apiPayload?.resumo || dashboardUiMock.resumo,
+    proximoEvento: apiPayload?.proximoEvento || dashboardUiMock.proximoEvento,
+    propostasCasa: apiPayload?.propostasCasa || dashboardUiMock.propostasCasa,
+    calendario: apiPayload?.calendario || dashboardUiMock.calendario,
   };
 }
 
-async function getCasaShowDashboardData() {
+async function getCasaShowDashboardData(token) {
   if (USE_MOCK) {
     return buildDashboardData(casaDeShowMock);
   }
 
-  return buildDashboardData(casaDeShowMock);
+  if (!token) throw new Error("Token não fornecido");
+  const response = await getCasaShowDashboardRequest(token);
+  return buildDashboardData(response);
 }
 
 function buildCalendarMatrix(month, year) {
@@ -229,7 +233,12 @@ export default function CasaShowDashboardScreen() {
   useEffect(() => {
     async function loadDashboard() {
       try {
-        const data = await getCasaShowDashboardData();
+        const stored = await AsyncStorage.getItem('user_session');
+        if (!stored) throw new Error('Sessão não encontrada');
+        
+        const session = JSON.parse(stored);
+        const data = await getCasaShowDashboardData(session.token);
+        
         setDashboard(data);
         setSelectedDay(data?.calendario?.diaSelecionado || null);
       } catch (error) {
