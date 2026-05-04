@@ -1,12 +1,13 @@
 const API_BASE_URL = "https://night-out-api.onrender.com";
 
 async function request(path, options = {}) {
+  const { headers, ...restOptions } = options;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...(headers || {}),
     },
-    ...options,
+    ...restOptions,
   });
 
   let data = null;

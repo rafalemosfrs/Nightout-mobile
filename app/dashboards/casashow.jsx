@@ -192,10 +192,16 @@ async function getCasaShowDashboardData(token) {
   
   return {
     casa: normalizeCasaDeShowPayload(response?.casa || response),
-    resumo: response?.resumo || dashboardUiMock.resumo,
+    resumo: {
+      ...dashboardUiMock.resumo,
+      ...(response?.resumo || {}),
+    },
     proximoEvento: response?.proximoEvento || dashboardUiMock.proximoEvento,
-    propostasCasa: response?.propostasCasa || dashboardUiMock.propostasCasa,
-    calendario: response?.calendario || dashboardUiMock.calendario,
+    propostasCasa: Array.isArray(response?.propostasCasa) ? response.propostasCasa : dashboardUiMock.propostasCasa,
+    calendario: {
+      ...dashboardUiMock.calendario,
+      ...(response?.calendario || {}),
+    },
   };
 }
 
