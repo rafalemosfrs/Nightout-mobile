@@ -1,7 +1,8 @@
 const API_BASE_URL = "https://night-out-api.onrender.com";
+const EVENTS_API_BASE_URL = "https://night-out-api-2.onrender.com";
 
-async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+async function requestToBase(baseUrl, path, options = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
@@ -22,6 +23,10 @@ async function request(path, options = {}) {
   }
 
   return data;
+}
+
+async function request(path, options = {}) {
+  return requestToBase(API_BASE_URL, path, options);
 }
 
 export function loginRequest(payload) {
@@ -45,3 +50,58 @@ export function registerArtistRequest(payload) {
   });
 }
 
+export function registerCasaShowRequest(payload) {
+  return request("/casadeshow/cadastro", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getClients(token) {
+  return request("/cliente?page=1&pageSize=1000", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getClientById(id, token) {
+  return request(`/cliente/${id}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getArtists(token) {
+  return request("/artista?page=1&pageSize=1000", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getArtistProposals(token) {
+  return requestToBase(
+    EVENTS_API_BASE_URL,
+    "/propostaArtista?page=1&pageSize=1000",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+}
+
+export function getEvents(token) {
+  return requestToBase(EVENTS_API_BASE_URL, "/evento?page=1&pageSize=1000", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}

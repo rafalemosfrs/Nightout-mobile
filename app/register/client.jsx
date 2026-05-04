@@ -20,6 +20,9 @@ export default function RegisterClientScreen() {
   const [emailError, setEmailError] = useState('');
   const [telefoneError, setTelefoneError] = useState('');
   const [senhaError, setSenhaError] = useState('');
+  const [apelidoError, setApelidoError] = useState('');
+  const [dataNascimentoError, setDataNascimentoError] = useState('');
+  const [preferenciasError, setPreferenciasError] = useState('');
   const [apiError, setApiError] = useState('');
 
   const clearFieldErrors = () => {
@@ -27,6 +30,9 @@ export default function RegisterClientScreen() {
     setEmailError('');
     setTelefoneError('');
     setSenhaError('');
+    setApelidoError('');
+    setDataNascimentoError('');
+    setPreferenciasError('');
   };
 
   const validateEmail = (valor) => {
@@ -37,6 +43,20 @@ export default function RegisterClientScreen() {
   const validateTelefone = (valor) => {
     const digits = valor.replace(/\D/g, '');
     return digits.length >= 10 && digits.length <= 11;
+  };
+
+  const validateDataNascimento = (valor) => {
+    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!regex.test(valor.trim())) return false;
+
+    const [ano, mes, dia] = valor.split('-').map(Number);
+    const data = new Date(ano, mes - 1, dia);
+
+    return (
+      data.getFullYear() === ano &&
+      data.getMonth() === mes - 1 &&
+      data.getDate() === dia
+    );
   };
 
   const handleRegister = async () => {
@@ -68,20 +88,40 @@ export default function RegisterClientScreen() {
       hasError = true;
     }
 
+    if (!apelido.trim()) {
+      setApelidoError('Informe um apelido.');
+      hasError = true;
+    }
+
+    if (dataNascimento.trim() && !validateDataNascimento(dataNascimento)) {
+      setDataNascimentoError('Use o formato YYYY-MM-DD.');
+      hasError = true;
+    }
+
+    if (!preferencias.trim()) {
+      setPreferenciasError('Informe suas preferências.');
+      hasError = true;
+    }
+
     if (hasError) return;
 
     try {
       setLoading(true);
 
-      const data = await registerClientRequest({
+      const payload = {
         nome: nome.trim(),
         email: email.trim().toLowerCase(),
         senha,
         telefone: telefone.trim(),
-        apelido: apelido.trim() || undefined,
-        preferencias: preferencias.trim() || undefined,
-        data_nascimento: dataNascimento.trim() || undefined,
-      });
+        apelido: apelido.trim(),
+        preferencias: preferencias.trim(),
+      };
+
+      if (dataNascimento.trim()) {
+        payload.data_nascimento = dataNascimento.trim();
+      }
+
+      const data = await registerClientRequest(payload);
 
       Alert.alert('Sucesso', data.message || 'Cliente cadastrado com sucesso!');
       router.replace('/');
@@ -97,6 +137,7 @@ export default function RegisterClientScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -179,9 +220,11 @@ export default function RegisterClientScreen() {
               value={apelido}
               onChangeText={(text) => {
                 setApelido(text);
+                setApelidoError('');
                 setApiError('');
               }}
             />
+            {apelidoError ? <Text style={styles.fieldErrorText}>{apelidoError}</Text> : null}
           </View>
 
           <View>
@@ -191,9 +234,13 @@ export default function RegisterClientScreen() {
               value={dataNascimento}
               onChangeText={(text) => {
                 setDataNascimento(text);
+                setDataNascimentoError('');
                 setApiError('');
               }}
             />
+            {dataNascimentoError ? (
+              <Text style={styles.fieldErrorText}>{dataNascimentoError}</Text>
+            ) : null}
           </View>
 
           <View>
@@ -203,9 +250,13 @@ export default function RegisterClientScreen() {
               value={preferencias}
               onChangeText={(text) => {
                 setPreferencias(text);
+                setPreferenciasError('');
                 setApiError('');
               }}
             />
+            {preferenciasError ? (
+              <Text style={styles.fieldErrorText}>{preferenciasError}</Text>
+            ) : null}
           </View>
         </View>
 
