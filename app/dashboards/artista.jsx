@@ -13,7 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   getArtists,
-  getArtistProposals,
+  getHouseProposals,
   getEvents,
 } from '../../services/api';
 import {
@@ -172,9 +172,9 @@ async function getArtistDashboardData() {
 
   try {
     const [propostasRes, eventosRes] = await Promise.all([
-      getArtistProposals(session.token),
-      getEvents(session.token),
-    ]);
+  getHouseProposals(session.token),
+  getEvents(session.token),
+]);
 
     const propostas = Array.isArray(propostasRes)
       ? propostasRes
@@ -184,7 +184,7 @@ async function getArtistDashboardData() {
       ? eventosRes
       : eventosRes?.eventos || eventosRes?.items || [];
 
-    const propostasDoArtista = propostas.filter((p) => p.aceito === artistaId);
+   const propostasDoArtista = propostas.filter((p) => p.id_artista === artistaId);
 
     const eventosMap = rawEvents.reduce((acc, ev) => {
       acc[ev.id_evento || ev.id] = ev;
@@ -536,24 +536,24 @@ export default function ArtistDashboardScreen() {
           </View>
 
           <View style={styles.chartArea}>
-            {data.showsUltimosMeses.map((item) => {
-              const height = `${Math.max(
-                (item.quantidade / maxShows) * 100,
-                item.quantidade > 0 ? 8 : 3
-              )}%`;
+            {data.showsUltimosMeses.map((item, index) => {
+  const height = `${Math.max(
+    (item.quantidade / maxShows) * 100,
+    item.quantidade > 0 ? 8 : 3
+  )}%`;
 
-              return (
-                <View key={item.mes} style={styles.chartColumn}>
-                  <Text style={styles.chartValue}>
-                    {item.quantidade > 0 ? item.quantidade : ''}
-                  </Text>
-                  <View style={styles.chartTrack}>
-                    <View style={[styles.chartBar, { height }]} />
-                  </View>
-                  <Text style={styles.chartLabel}>{item.mes}</Text>
-                </View>
-              );
-            })}
+  return (
+    <View key={`${item.mes}-${index}`} style={styles.chartColumn}>
+      <Text style={styles.chartValue}>
+        {item.quantidade > 0 ? item.quantidade : ''}
+      </Text>
+      <View style={styles.chartTrack}>
+        <View style={[styles.chartBar, { height }]} />
+      </View>
+      <Text style={styles.chartLabel}>{item.mes}</Text>
+    </View>
+  );
+})}
           </View>
         </View>
 

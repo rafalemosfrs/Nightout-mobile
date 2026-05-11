@@ -84,10 +84,10 @@ export function getArtists(token) {
   });
 }
 
-export function getArtistProposals(token) {
+export function getHouseProposals(token) {
   return requestToBase(
     EVENTS_API_BASE_URL,
-    "/propostaArtista?page=1&pageSize=1000",
+    "/propostaCasa?page=1&pageSize=1000",
     {
       method: "GET",
       headers: {
