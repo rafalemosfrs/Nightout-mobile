@@ -73,25 +73,13 @@ console.log('LOGIN DATA:', JSON.stringify(data, null, 2));
 
 const nomeUsuario =
   data?.nome ||
-  data?.user?.nome ||
-  data?.usuario?.nome ||
-  data?.cliente?.nome ||
   '';
 
-const loggedUserId =
+  const loggedUserId =
   data?.id ||
-  data?._id ||
-  data?.user?.id ||
-  data?.user?._id ||
-  data?.usuario?.id ||
-  data?.usuario?._id ||
-  data?.cliente?.id ||
-  data?.cliente?._id ||
-  data?.artista?.id ||
-  data?.artista?._id ||
-  data?.casaShow?.id ||
-  data?.casaShow?._id ||
+  data?.usuario?.id || 
   null;
+
 
 setLoggedUserInfo({ id: loggedUserId, role: data?.tipo });
 

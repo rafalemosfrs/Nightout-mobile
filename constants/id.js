@@ -15,14 +15,11 @@ export async function initializeLoggedUserInfo() {
     loggedUserId =
       session?.id ||
       session?.id_usuario ||
-      session?.userId ||
-      session?.usuarioId ||
-      session?.clienteId ||
-      session?.artistaId ||
       null;
+      
     loggedUserRole = session?.tipo || session?.role || null;
   } catch (error) {
-    console.warn('Falha ao inicializar ID de usuário:', error);
+    console.warn('Falha ao inicializar ID de usuï¿½rio:', error);
   }
 }
 

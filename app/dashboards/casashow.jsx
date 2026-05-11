@@ -272,7 +272,7 @@ export default function CasaShowDashboardScreen() {
       </SafeAreaView>
     );
   }
-
+  
   const { casa } = dashboard;
 
   const summaryCards = [
