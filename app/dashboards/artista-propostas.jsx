@@ -240,20 +240,6 @@ async function listarPropostasArtista({ page = 1, pageSize = PAGE_SIZE } = {}) {
     return MOCK_PROPOSTAS_ARTISTA.map(normalizePropostaArtista);
   }
 
-  /*
-    Quando for integrar, troque este bloco pelo client HTTP do app.
-
-    Exemplo:
-    const response = await api.get(
-      `${PROPOSTA_ARTISTA_ENDPOINT}?page=${page}&pageSize=${pageSize}`
-    );
-
-    return response.data.map(normalizePropostaArtista);
-
-    Backend esperado:
-    GET /proposta-artista?page=1&pageSize=10
-  */
-
   throw new Error(
     `Integração pendente: ${PROPOSTA_ARTISTA_ENDPOINT}?page=${page}&pageSize=${pageSize}`
   );
@@ -271,18 +257,6 @@ async function atualizarStatusPropostaArtista(proposta, nextStatus) {
       ...payload,
     };
   }
-
-  /*
-    Quando for integrar, troque este bloco pelo client HTTP do app.
-
-    Exemplo:
-    const response = await api.put(
-      `${PROPOSTA_ARTISTA_ENDPOINT}/${proposta.id_proposta_artista}`,
-      payload
-    );
-
-    return normalizePropostaArtista(response.data.propostaArtista || response.data);
-  */
 
   throw new Error(
     `Integração pendente: PUT ${PROPOSTA_ARTISTA_ENDPOINT}/${proposta.id_proposta_artista}`
