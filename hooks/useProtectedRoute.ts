@@ -6,7 +6,14 @@ import type { UsuarioTipo } from '../types/api';
 const DASHBOARD_ROUTES_BY_TYPE: Record<UsuarioTipo, string[]> = {
   CLIENTE: ['cliente'],
   ARTISTA: ['artista', 'artista-perfil'],
-  CASASHOW: ['casashow', 'casashow-eventos', 'casashow-propostas'],
+  CASASHOW: [
+    'casashow',
+    'casashow-eventos',
+    'casashow-eventos-resumo',
+    'casashow-propostas',
+    'casashow-propostas-aceitas',
+    'casashow-propostas-enviadas',
+  ],
 };
 
 const TAB_ROUTES_BY_TYPE: Record<UsuarioTipo, string[]> = {

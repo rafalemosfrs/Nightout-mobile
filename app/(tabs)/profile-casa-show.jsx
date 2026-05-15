@@ -1,87 +1,331 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
+  ActivityIndicator,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
   SafeAreaView,
-  Image,
-  Pressable,
   ScrollView,
-} from "react-native";
-import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import LogoutModal from "../../components/logoutModal";
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import Button from '../../components/Button';
+import LogoutModal from '../../components/logoutModal';
+import { useAuth } from '../../contexts/AuthContext';
+import { usersService } from '../../services/api';
+import { getCasaAddress, normalizeCasa } from '../../utils/casaShowData';
+import {
+  colors,
+  spacing,
+  borderRadius,
+  typography,
+  shadows,
+} from '../../constants/theme';
+
+const HERO_IMAGE =
+  'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=900&h=900&fit=crop&auto=format';
+
+function Field({ label, value, onChangeText, editable = true, multiline = false }) {
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        style={[
+          styles.input,
+          multiline && styles.textArea,
+          !editable && styles.inputDisabled,
+        ]}
+        placeholderTextColor={colors.textMuted}
+        value={value}
+        editable={editable}
+        onChangeText={onChangeText}
+        multiline={multiline}
+        textAlignVertical={multiline ? 'top' : 'center'}
+      />
+    </View>
+  );
+}
 
 export default function ProfileCasaShowScreen() {
-  const router = useRouter();
+  const { session, logout } = useAuth();
+  const [casa, setCasa] = useState(null);
+  const [form, setForm] = useState({
+    nome_fantasia: '',
+    responsavel: '',
+    email: '',
+    telefone: '',
+    cnpj: '',
+    endereco: '',
+    bairro: '',
+    estado: '',
+    cep: '',
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
 
-  const mock = {
-    nome: "Living",
-    email: "living@gmail.com",
-    cnpj: "19.23.1231.1231/0001-02",
-    endereco: "Av. Bezerra de Menezes",
-    telefone: "85 9 84811171",
-    capacidade: "3000 Pessoas",
-    status: "Ativo",
-    image: "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7",
-  };
+  const loadCasa = useCallback(async () => {
+    if (!session?.id_usuario) return;
 
-  const handleLogout = async () => {
     try {
-      await AsyncStorage.removeItem("user_session");
-      setModalVisible(false);
-      router.replace("/login");
-    } catch (error) {
-      console.log("Erro ao fazer logout:", error);
+      setError('');
+      const response = await usersService.getCasaShow(session.id_usuario);
+      const normalized = normalizeCasa(response, session);
+      setCasa(normalized);
+      setForm({
+        nome_fantasia: normalized.nome_fantasia || '',
+        responsavel: normalized.responsavel || '',
+        email: normalized.email || '',
+        telefone: normalized.telefone || '',
+        cnpj: normalized.cnpj || '',
+        endereco: normalized.endereco || '',
+        bairro: normalized.bairro || '',
+        estado: normalized.estado || '',
+        cep: normalized.cep || '',
+      });
+    } catch (requestError) {
+      setError(requestError.message || 'Nao foi possivel carregar o perfil.');
+      const normalized = normalizeCasa({}, session);
+      setCasa(normalized);
+      setForm((current) => ({
+        ...current,
+        nome_fantasia: normalized.nome_fantasia,
+        responsavel: normalized.responsavel,
+        email: normalized.email,
+      }));
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [session]);
+
+  useEffect(() => {
+    loadCasa();
+  }, [loadCasa]);
+
+  function updateFormField(field, value) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function handleSave() {
+    if (!session?.id_usuario) return;
+
+    try {
+      setSaving(true);
+      setError('');
+      const payload = {
+        nome_fantasia: form.nome_fantasia.trim(),
+        telefone: form.telefone.trim(),
+        endereco: form.endereco.trim(),
+        bairro: form.bairro.trim(),
+        estado: form.estado.trim(),
+        cep: form.cep.trim(),
+      };
+
+      await usersService.updateCasaShow(session.id_usuario, payload);
+      setEditing(false);
+      await loadCasa();
+    } catch (requestError) {
+      setError(requestError.message || 'Nao foi possivel salvar as alteracoes.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleLogout() {
+    setModalVisible(false);
+    await logout();
+    router.replace('/');
+  }
+
+  const casaName = form.nome_fantasia || casa?.nome_fantasia || 'Casa de Show';
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
       >
-        <View style={styles.header}>
-          <Image source={{ uri: mock.image }} style={styles.avatar} />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          bounces={false}
+        >
+          <ImageBackground source={{ uri: HERO_IMAGE }} style={styles.heroImage} resizeMode="cover">
+            <LinearGradient
+              colors={['rgba(10, 14, 26, 0.2)', 'rgba(10, 14, 26, 0.88)']}
+              style={styles.heroOverlay}
+            >
+              <View style={styles.topBar}>
+                <TouchableOpacity
+                  style={styles.iconButton}
+                  activeOpacity={0.85}
+                  onPress={() => router.push('/dashboards/casashow')}
+                >
+                  <Ionicons name="chevron-back" size={22} color={colors.text} />
+                </TouchableOpacity>
 
-          <Text style={styles.name}>{mock.nome}</Text>
-          <Text style={styles.email}>{mock.email}</Text>
+                <TouchableOpacity
+                  style={styles.iconButton}
+                  activeOpacity={0.85}
+                  onPress={() => setModalVisible(true)}
+                >
+                  <Ionicons name="log-out-outline" size={20} color={colors.text} />
+                </TouchableOpacity>
+              </View>
 
-          <View style={styles.badges}>
-            <View style={styles.badgeBlue}>
-              <Text style={styles.badgeText}>Casa de Show</Text>
-            </View>
-            <View style={styles.badgeGreen}>
-              <Text style={styles.badgeText}>{mock.status}</Text>
+              <View style={styles.heroContent}>
+                <Text style={styles.heroTitle}>{casaName}</Text>
+                <Text style={styles.heroSubtitle}>
+                  {getCasaAddress(form) || 'Perfil da casa de show'}
+                </Text>
+              </View>
+            </LinearGradient>
+          </ImageBackground>
+
+          <View style={styles.profileContainer}>
+            <View style={styles.profileContent}>
+              <Text style={styles.authTitle}>Perfil da casa</Text>
+              <Text style={styles.authSubtitle}>
+                Dados carregados diretamente do microservico de usuarios.
+              </Text>
+
+              {loading ? (
+                <View style={styles.loadingBox}>
+                  <ActivityIndicator color={colors.primary} />
+                  <Text style={styles.loadingText}>Carregando dados...</Text>
+                </View>
+              ) : (
+                <>
+                  {error ? (
+                    <TouchableOpacity
+                      style={styles.errorCard}
+                      activeOpacity={0.85}
+                      onPress={loadCasa}
+                    >
+                      <Ionicons name="warning-outline" size={18} color={colors.error} />
+                      <Text style={styles.errorText}>{error}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  <Field
+                    label="Nome da casa"
+                    value={form.nome_fantasia}
+                    editable={editing}
+                    onChangeText={(value) => updateFormField('nome_fantasia', value)}
+                  />
+
+                  <Field
+                    label="Responsavel"
+                    value={form.responsavel}
+                    editable={false}
+                    onChangeText={(value) => updateFormField('responsavel', value)}
+                  />
+
+                  <Field
+                    label="Email"
+                    value={form.email}
+                    editable={false}
+                    onChangeText={(value) => updateFormField('email', value)}
+                  />
+
+                  <Field
+                    label="Telefone"
+                    value={form.telefone}
+                    editable={editing}
+                    onChangeText={(value) => updateFormField('telefone', value)}
+                  />
+
+                  <Field
+                    label="CNPJ"
+                    value={form.cnpj}
+                    editable={false}
+                    onChangeText={(value) => updateFormField('cnpj', value)}
+                  />
+
+                  <Field
+                    label="Endereco"
+                    value={form.endereco}
+                    editable={editing}
+                    onChangeText={(value) => updateFormField('endereco', value)}
+                  />
+
+                  <View style={styles.row}>
+                    <View style={styles.halfField}>
+                      <Field
+                        label="Bairro"
+                        value={form.bairro}
+                        editable={editing}
+                        onChangeText={(value) => updateFormField('bairro', value)}
+                      />
+                    </View>
+
+                    <View style={styles.halfField}>
+                      <Field
+                        label="Estado"
+                        value={form.estado}
+                        editable={editing}
+                        onChangeText={(value) => updateFormField('estado', value)}
+                      />
+                    </View>
+                  </View>
+
+                  <Field
+                    label="CEP"
+                    value={form.cep}
+                    editable={editing}
+                    onChangeText={(value) => updateFormField('cep', value)}
+                  />
+
+                  {editing ? (
+                    <View style={styles.actionsRow}>
+                      <View style={styles.actionButtonWrapper}>
+                        <Button
+                          title="Cancelar"
+                          variant="outline"
+                          onPress={() => {
+                            setEditing(false);
+                            loadCasa();
+                          }}
+                        />
+                      </View>
+
+                      <View style={styles.actionButtonWrapper}>
+                        <Button title="Salvar" onPress={handleSave} loading={saving} />
+                      </View>
+                    </View>
+                  ) : (
+                    <Button
+                      title="Editar"
+                      onPress={() => setEditing(true)}
+                      style={styles.editButton}
+                    />
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.logoutButton}
+                    activeOpacity={0.85}
+                    onPress={() => setModalVisible(true)}
+                  >
+                    <Ionicons name="log-out-outline" size={18} color={colors.error} />
+                    <Text style={styles.logoutText}>Sair</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
-        </View>
-
-        <View style={styles.infoContainer}>
-          <Text style={styles.sectionTitle}>Informações de Casa de Show</Text>
-
-          {renderItem("Nome Fantasia", mock.nome)}
-          {renderItem("CNPJ", mock.cnpj)}
-          {renderItem("Endereço", mock.endereco)}
-          {renderItem("Email", mock.email)}
-          {renderItem("Telefone", mock.telefone)}
-          {renderItem("Capacidade", mock.capacidade)}
-        </View>
-
-        <View style={styles.footer}>
-          <Pressable
-            onPress={() => setModalVisible(true)}
-            style={({ pressed }) => [
-              styles.logoutButton,
-              pressed && styles.logoutButtonPressed,
-            ]}
-          >
-            <Text style={styles.logoutText}>Sair</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <LogoutModal
         visible={modalVisible}
@@ -92,131 +336,169 @@ export default function ProfileCasaShowScreen() {
   );
 }
 
-function renderItem(label, value) {
-  return (
-    <View style={styles.item}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   container: {
     flex: 1,
-    backgroundColor: "#02142b",
   },
-
   scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+    flexGrow: 1,
   },
-
-  header: {
-    alignItems: "center",
-    marginBottom: 30,
+  heroImage: {
+    width: '100%',
+    height: 320,
   },
-
-  avatar: {
-    width: 180,
-    height: 180,
-    borderRadius: 100,
-    marginBottom: 15,
-    borderWidth: 3,
-    borderColor: "#5b8cff",
-    shadowColor: "#5b8cff",
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 15,
+  heroOverlay: {
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingBottom: spacing.xl,
   },
-
-  name: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#ffffff",
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
   },
-
-  email: {
-    color: "#9aa4b2",
-    marginBottom: 15,
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(26, 31, 46, 0.82)',
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  badges: {
-    flexDirection: "row",
-    gap: 12,
+  heroContent: {
+    paddingHorizontal: spacing.lg,
   },
-
-  badgeBlue: {
-    backgroundColor: "#3b82f6",
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+  heroTitle: {
+    ...typography.h1,
+    color: colors.text,
+    marginBottom: spacing.sm,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
-
-  badgeGreen: {
-    backgroundColor: "#22c55e",
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+  heroSubtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
-
-  badgeText: {
-    color: "#fff",
-    fontWeight: "600",
+  profileContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    marginTop: -spacing.lg,
+    ...shadows.large,
   },
-
-  infoContainer: {
-    marginTop: 10,
+  profileContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
-
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#ffffff",
-    marginBottom: 15,
+  authTitle: {
+    ...typography.h2,
+    color: colors.text,
+    marginBottom: spacing.xs,
   },
-
-  item: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#2a3a5a",
-    paddingVertical: 14,
+  authSubtitle: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
   },
-
+  loadingBox: {
+    minHeight: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  errorCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    marginLeft: spacing.sm,
+    flex: 1,
+  },
+  inputGroup: {
+    marginBottom: spacing.md,
+  },
   label: {
-    color: "#b0bac9",
+    ...typography.bodySmall,
+    color: colors.text,
+    marginBottom: spacing.sm,
+    fontWeight: '500',
+  },
+  input: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: '#3B455A',
+    borderRadius: 10,
+    backgroundColor: '#1B2233',
+    paddingHorizontal: 14,
+    color: colors.text,
     fontSize: 15,
-    fontWeight: "600",
   },
-
-  value: {
-    color: "#e4e9f2",
-    fontSize: 16,
-    fontWeight: "500",
-    marginTop: 4,
+  textArea: {
+    minHeight: 88,
+    paddingTop: 14,
   },
-
-  footer: {
-    marginTop: 30,
-    alignItems: "center",
+  inputDisabled: {
+    opacity: 0.68,
+    backgroundColor: '#121827',
   },
-
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  halfField: {
+    width: '48.5%',
+  },
+  editButton: {
+    marginTop: spacing.md,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+  },
+  actionButtonWrapper: {
+    width: '48%',
+  },
   logoutButton: {
-    backgroundColor: "#ff3b3b",
-    paddingVertical: 16,
-    paddingHorizontal: 60,
-    borderRadius: 14,
-    alignItems: "center",
+    height: 48,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.45)',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.md,
   },
-
-  logoutButtonPressed: {
-    transform: [{ scale: 0.96 }],
-    backgroundColor: "#cc2f2f",
-    opacity: 0.9,
-  },
-
   logoutText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
+    ...typography.bodySmall,
+    color: colors.error,
+    fontWeight: '700',
+    marginLeft: spacing.sm,
   },
 });

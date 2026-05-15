@@ -8,7 +8,11 @@ import React, {
   type ReactNode,
 } from 'react';
 import { authService, usersService } from '../services/api';
-import { subscribeUnauthorized } from '../services/apiClient';
+import {
+  clearApiAuthToken,
+  setApiAuthToken,
+  subscribeUnauthorized,
+} from '../services/apiClient';
 import {
   clearStoredSession,
   getStoredSession,
@@ -60,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const clearAuthState = useCallback(async () => {
+    clearApiAuthToken();
     await clearStoredSession();
     clearLoggedUserInfo();
     setSession(null);
@@ -78,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(storedSession);
 
         if (storedSession) {
+          setApiAuthToken(storedSession.token);
           setLoggedUserInfo({
             id: storedSession.id,
             role: storedSession.tipo,
@@ -103,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (payload: LoginPayload) => {
     const response = await authService.login(payload);
+    setApiAuthToken(response.token);
     const nextSession = await saveSession(response);
 
     setLoggedUserInfo({

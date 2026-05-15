@@ -6,6 +6,7 @@ export type UsuarioTipo = 'CLIENTE' | 'ARTISTA' | 'CASASHOW';
 export interface UserSession {
   email: string;
   id: UUID;
+  id_usuario: UUID;
   nome: string;
   tipo: UsuarioTipo;
   token: string;
@@ -18,7 +19,7 @@ export interface LoginPayload {
 
 export interface AuthResponse {
   id: UUID;
-  message: string;
+  message?: string;
   token: string;
   tipo: UsuarioTipo;
   nome: string;
@@ -130,16 +131,16 @@ export interface CasaDeShowCadastroResponse {
 
 export type EventoStatus = 'ATIVO' | 'FINALIZADO' | 'CANCELADO' | string;
 
-export interface EventoDTO {
+export interface EventoCreatePayload {
+  id_usuario: UUID;
   titulo: string;
   descricao: string;
   data_inicio: ISODateTimeString;
+  data_fim: ISODateTimeString;
   local: string;
-  id_casa_show: UUID;
-  data_fim?: ISODateTimeString;
-  status?: EventoStatus;
-  foto_evento?: string | null;
 }
+
+export type EventoDTO = EventoCreatePayload;
 
 export interface Evento {
   id?: UUID;
@@ -189,7 +190,9 @@ export type PropostaStatus =
 
 export interface PropostaCasaDTO {
   id_artista: UUID;
+  id_casa_show: UUID;
   id_evento: UUID;
+  data_proposta?: ISODateTimeString;
   valor_ofertado: number;
   data_evento: ISODateTimeString;
   termos: string;

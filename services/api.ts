@@ -89,15 +89,17 @@ function validateCasaPayload(payload: CasaDeShowCadastroPayload) {
 }
 
 function validateEventoPayload(payload: EventoDTO) {
+  assertRequiredString(payload.id_usuario, 'id_usuario');
   assertRequiredString(payload.titulo, 'titulo');
   assertRequiredString(payload.descricao, 'descricao');
   assertRequiredString(payload.data_inicio, 'data_inicio');
+  assertRequiredString(payload.data_fim, 'data_fim');
   assertRequiredString(payload.local, 'local');
-  assertRequiredString(payload.id_casa_show, 'id_casa_show');
 }
 
 function validatePropostaPayload(payload: PropostaCasaDTO) {
   assertRequiredString(payload.id_artista, 'id_artista');
+  assertRequiredString(payload.id_casa_show, 'id_casa_show');
   assertRequiredString(payload.id_evento, 'id_evento');
   assertNumber(payload.valor_ofertado, 'valor_ofertado');
   assertRequiredString(payload.data_evento, 'data_evento');
@@ -150,6 +152,9 @@ export const usersService = {
   getCasaShow(id: UUID) {
     return usersApi.get<CasaDeShow>(`/casaDeShow/${id}`);
   },
+  updateCasaShow(id: UUID, payload: Partial<CasaDeShow>) {
+    return usersApi.put<CasaDeShow, Partial<CasaDeShow>>(`/casaDeShow/${id}`, payload);
+  },
   listClientes() {
     return usersApi.get<Cliente[]>('/cliente/');
   },
@@ -161,7 +166,7 @@ export const usersService = {
 export const eventService = {
   async create(payload: EventoDTO) {
     validateEventoPayload(payload);
-    return eventsApi.post<Evento, EventoDTO>('/', payload);
+    return eventsApi.post<Evento, EventoDTO>('/evento/', payload);
   },
   async list(params?: { page?: number; pageSize?: number }) {
     const response = await eventsApi.get<EventoListResponse>('/', { params });
@@ -170,8 +175,9 @@ export const eventService = {
   listRaw(params?: { page?: number; pageSize?: number }) {
     return eventsApi.get<EventoListResponse>('/', { params });
   },
+  // Aguardando CADU ATUALIZAR O BACK DEPLOYADO
   listByCasaShow(idCasaShow: UUID) {
-    return eventsApi.get<Evento[]>(`/casa/${idCasaShow}`);
+    return eventsApi.get<Evento[]>(`evento/casa/${idCasaShow}`);
   },
   getById(id: UUID) {
     return eventsApi.get<Evento>(`/${id}`);

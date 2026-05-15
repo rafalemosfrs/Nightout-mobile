@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,20 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { eventService, proposalService, usersService } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  formatDateTime,
+  formatTimeOnly,
+  getCasaAddress,
+  getEventId,
+  isAcceptedProposal,
+  isFutureOrToday,
+  normalizeCasa,
+  normalizeEvent,
+  normalizeProposal,
+  parseApiDate,
+} from '../../utils/casaShowData';
 import {
   colors,
   spacing,
@@ -18,13 +33,11 @@ import {
   shadows,
 } from '../../constants/theme';
 
-const USE_MOCK = true;
-
-const WEEK_DAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+const WEEK_DAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
 const MONTH_NAMES = [
   'Janeiro',
   'Fevereiro',
-  'Março',
+  'Marco',
   'Abril',
   'Maio',
   'Junho',
@@ -36,163 +49,9 @@ const MONTH_NAMES = [
   'Dezembro',
 ];
 
-const casaDeShowMock = {
-  id_usuario: 'casa-show-001',
-  nome_fantasia: 'Living Music Hall',
-  cnpj: '12.345.678/0001-90',
-  capacidade: '1200',
-  endereco: 'Av. Beira Mar, 1200',
-  bairro: 'Meireles',
-  estado: 'CE',
-  cep: '60165-121',
-  geo_lat: '-3.7319',
-  geo_lng: '-38.5267',
-  usuario: {
-    nome: 'Living Entretenimento',
-    email: 'contato@living.com',
-    telefone: '+55 85 99999-0000',
-    tipo: 'CASASHOW',
-  },
-};
-
-const dashboardUiMock = {
-  resumo: {
-    eventosCasa: 12,
-    proximosEventos: 4,
-    propostasEnviadas: 9,
-    propostasAceitas: 5,
-  },
-  proximoEvento: {
-    id: 'evt-next-1',
-    titulo: 'Noite do Piseiro',
-    data: '24 de Fevereiro • 22:00',
-    local: 'Av. Beira Mar, 1200 • Meireles',
-  },
-  propostasCasa: [
-    {
-      id: 'prop-1',
-      artista: 'Du e Bielzin',
-      data: '24/02/2026',
-      status: 'Aceita',
-    },
-    {
-      id: 'prop-2',
-      artista: 'DJ Mari',
-      data: '27/02/2026',
-      status: 'Pendente',
-    },
-    {
-      id: 'prop-3',
-      artista: 'Forró Vybbe',
-      data: '03/03/2026',
-      status: 'Pendente',
-    },
-  ],
-  calendario: {
-    mes: 2,
-    ano: 2026,
-    diaSelecionado: 24,
-    diasComEvento: [7, 14, 24, 27],
-    eventosPorDia: {
-      7: [
-        {
-          id: 'cal-7-1',
-          titulo: 'Sexta do Trap',
-          horario: '21:30',
-          artista: 'MC A7',
-          status: 'Confirmado',
-        },
-      ],
-      14: [
-        {
-          id: 'cal-14-1',
-          titulo: 'Especial Carnaval',
-          horario: '23:00',
-          artista: 'Banda Swing Total',
-          status: 'Confirmado',
-        },
-        {
-          id: 'cal-14-2',
-          titulo: 'After Open Format',
-          horario: '02:00',
-          artista: 'DJ Gabi',
-          status: 'Confirmado',
-        },
-      ],
-      24: [
-        {
-          id: 'cal-24-1',
-          titulo: 'Noite do Piseiro',
-          horario: '22:00',
-          artista: 'Du e Bielzin',
-          status: 'Confirmado',
-        },
-        {
-          id: 'cal-24-2',
-          titulo: 'Aquecimento do Evento',
-          horario: '20:30',
-          artista: 'DJ Nanda',
-          status: 'Confirmado',
-        },
-      ],
-      27: [
-        {
-          id: 'cal-27-1',
-          titulo: 'Baile Funk Premium',
-          horario: '23:30',
-          artista: 'DJ Mari',
-          status: 'Pendente',
-        },
-      ],
-    },
-  },
-};
-
-function normalizeCasaDeShowPayload(payload = {}) {
-  return {
-    id_usuario: payload?.id_usuario || '',
-    nome_fantasia: payload?.nome_fantasia || '',
-    cnpj: payload?.cnpj || '',
-    capacidade: payload?.capacidade || '',
-    endereco: payload?.endereco || '',
-    bairro: payload?.bairro || '',
-    estado: payload?.estado || '',
-    cep: payload?.cep || '',
-    geo_lat: payload?.geo_lat || '',
-    geo_lng: payload?.geo_lng || '',
-    usuario: {
-      nome: payload?.usuario?.nome || '',
-      email: payload?.usuario?.email || '',
-      telefone: payload?.usuario?.telefone || '',
-      tipo: payload?.usuario?.tipo || 'CASASHOW',
-    },
-  };
-}
-
-function buildDashboardData(casaPayload) {
-  const casa = normalizeCasaDeShowPayload(casaPayload);
-
-  return {
-    casa,
-    resumo: dashboardUiMock.resumo,
-    proximoEvento: dashboardUiMock.proximoEvento,
-    propostasCasa: dashboardUiMock.propostasCasa,
-    calendario: dashboardUiMock.calendario,
-  };
-}
-
-async function getCasaShowDashboardData() {
-  if (USE_MOCK) {
-    return buildDashboardData(casaDeShowMock);
-  }
-
-  return buildDashboardData(casaDeShowMock);
-}
-
 function buildCalendarMatrix(month, year) {
   const firstDayOfMonth = new Date(year, month - 1, 1).getDay();
   const totalDays = new Date(year, month, 0).getDate();
-
   const weeks = [];
   let currentDay = 1 - firstDayOfMonth;
 
@@ -200,12 +59,7 @@ function buildCalendarMatrix(month, year) {
     const week = [];
 
     for (let i = 0; i < 7; i += 1) {
-      if (currentDay < 1 || currentDay > totalDays) {
-        week.push(null);
-      } else {
-        week.push(currentDay);
-      }
-
+      week.push(currentDay < 1 || currentDay > totalDays ? null : currentDay);
       currentDay += 1;
     }
 
@@ -216,41 +70,152 @@ function buildCalendarMatrix(month, year) {
 }
 
 function getStatusStyle(status) {
-  return status === 'Aceita' || status === 'Confirmado'
+  return isAcceptedProposal(status) || status === 'Confirmado'
     ? styles.statusSuccess
     : styles.statusPending;
 }
 
+function getProposalStatusLabel(status) {
+  const normalized = String(status || 'PENDENTE').toUpperCase();
+  if (isAcceptedProposal(normalized)) return 'Aceita';
+  if (normalized === 'RECUSADA') return 'Recusada';
+  return 'Pendente';
+}
+
 export default function CasaShowDashboardScreen() {
-  const [dashboard, setDashboard] = useState(null);
+  const { session } = useAuth();
+  const [casa, setCasa] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDay, setSelectedDay] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [selectedDay, setSelectedDay] = useState(new Date().getDate());
+
+  const loadDashboard = useCallback(async () => {
+    if (!session?.id_usuario) return;
+
+    try {
+      setError('');
+
+      const [casaResult, eventsResult, proposalsResult] = await Promise.allSettled([
+        usersService.getCasaShow(session.id_usuario),
+        eventService.listByCasaShow(session.id_usuario),
+        proposalService.listByCasaShow(session.id_usuario),
+      ]);
+
+      if (casaResult.status === 'fulfilled') {
+        setCasa(normalizeCasa(casaResult.value, session));
+      } else {
+        setCasa(normalizeCasa({}, session));
+      }
+
+      if (eventsResult.status === 'fulfilled') {
+        setEvents(Array.isArray(eventsResult.value) ? eventsResult.value.map(normalizeEvent) : []);
+      } else {
+        setEvents([]);
+      }
+
+      if (proposalsResult.status === 'fulfilled') {
+        setProposals(
+          Array.isArray(proposalsResult.value)
+            ? proposalsResult.value.map(normalizeProposal)
+            : []
+        );
+      } else {
+        setProposals([]);
+      }
+
+      if (
+        casaResult.status === 'rejected' ||
+        eventsResult.status === 'rejected' ||
+        proposalsResult.status === 'rejected'
+      ) {
+        setError('Alguns dados nao puderam ser carregados. Puxe para atualizar.');
+      }
+    } catch (requestError) {
+      setError(requestError.message || 'Nao foi possivel carregar a dashboard.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [session]);
 
   useEffect(() => {
-    async function loadDashboard() {
-      try {
-        const data = await getCasaShowDashboardData();
-        setDashboard(data);
-        setSelectedDay(data?.calendario?.diaSelecionado || null);
-      } catch (error) {
-        console.log('Erro ao carregar dashboard da casa de show:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadDashboard();
-  }, []);
+  }, [loadDashboard]);
 
-  const calendarWeeks = useMemo(() => {
-    if (!dashboard) return [];
-    return buildCalendarMatrix(dashboard.calendario.mes, dashboard.calendario.ano);
-  }, [dashboard]);
+  const dashboard = useMemo(() => {
+    const now = Date.now();
+    const sortedEvents = [...events].sort((a, b) => {
+      const dateA = parseApiDate(a.data_inicio)?.getTime() || 0;
+      const dateB = parseApiDate(b.data_inicio)?.getTime() || 0;
+      return dateA - dateB;
+    });
 
-  const selectedDayEvents = useMemo(() => {
-    if (!dashboard || !selectedDay) return [];
-    return dashboard.calendario.eventosPorDia?.[selectedDay] || [];
-  }, [dashboard, selectedDay]);
+    const upcomingEvents = sortedEvents.filter((eventItem) =>
+      isFutureOrToday(eventItem.data_inicio)
+    );
+
+    const acceptedProposals = proposals.filter((proposal) =>
+      isAcceptedProposal(proposal.status)
+    );
+
+    const proposalsByEvent = new Set(
+      proposals.map((proposal) => proposal.id_evento).filter(Boolean)
+    );
+
+    const nextEvent = upcomingEvents[0] || null;
+    const current = new Date();
+    const month = current.getMonth() + 1;
+    const year = current.getFullYear();
+    const eventsThisMonth = sortedEvents.filter((eventItem) => {
+      const date = parseApiDate(eventItem.data_inicio);
+      return date && date.getMonth() + 1 === month && date.getFullYear() === year;
+    });
+
+    const eventsByDay = eventsThisMonth.reduce((acc, eventItem) => {
+      const date = parseApiDate(eventItem.data_inicio);
+      if (!date) return acc;
+
+      const day = date.getDate();
+      acc[day] = acc[day] || [];
+      acc[day].push(eventItem);
+      return acc;
+    }, {});
+
+    return {
+      now,
+      sortedEvents,
+      upcomingEvents,
+      acceptedProposals,
+      proposalsByEvent,
+      nextEvent,
+      month,
+      year,
+      daysWithEvents: Object.keys(eventsByDay).map(Number),
+      eventsByDay,
+      resumo: {
+        eventosCasa: events.length,
+        proximosEventos: upcomingEvents.length,
+        propostasEnviadas: proposals.length,
+        propostasAceitas: acceptedProposals.length,
+      },
+    };
+  }, [events, proposals]);
+
+  const calendarWeeks = useMemo(
+    () => buildCalendarMatrix(dashboard.month, dashboard.year),
+    [dashboard.month, dashboard.year]
+  );
+
+  const selectedDayEvents = dashboard.eventsByDay[selectedDay] || [];
+  const casaData = casa || normalizeCasa({}, session || {});
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadDashboard();
+  }
 
   if (loading) {
     return (
@@ -263,27 +228,16 @@ export default function CasaShowDashboardScreen() {
     );
   }
 
-  if (!dashboard) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Não foi possível carregar a dashboard.</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-  
-  const { casa } = dashboard;
-
   const summaryCards = [
     {
       title: 'Eventos da casa',
       value: dashboard.resumo.eventosCasa,
       subtitle: 'Total cadastrado',
       icon: 'calendar-outline',
+      onPress: () => router.push('/dashboards/casashow-eventos-resumo'),
     },
     {
-      title: 'Próximos eventos',
+      title: 'Proximos eventos',
       value: dashboard.resumo.proximosEventos,
       subtitle: 'Agenda futura',
       icon: 'time-outline',
@@ -293,12 +247,14 @@ export default function CasaShowDashboardScreen() {
       value: dashboard.resumo.propostasEnviadas,
       subtitle: 'Aguardando retorno',
       icon: 'paper-plane-outline',
+      onPress: () => router.push('/dashboards/casashow-propostas-enviadas'),
     },
     {
       title: 'Propostas aceitas',
       value: dashboard.resumo.propostasAceitas,
-      subtitle: 'Negociações fechadas',
+      subtitle: 'Negociacoes fechadas',
       icon: 'checkmark-circle-outline',
+      onPress: () => router.push('/dashboards/casashow-propostas-aceitas'),
     },
   ];
 
@@ -307,15 +263,16 @@ export default function CasaShowDashboardScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
+        }
       >
         <View style={styles.topBar}>
-          <TouchableOpacity
-            style={styles.iconButton}
-            activeOpacity={0.8}
-            onPress={() => router.push('/')}
-          >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
-          </TouchableOpacity>
+          <View style={styles.iconPlaceholder} />
 
           <Text style={styles.topBarTitle}>Dashboard Casa de Show</Text>
 
@@ -328,6 +285,13 @@ export default function CasaShowDashboardScreen() {
           </TouchableOpacity>
         </View>
 
+        {error ? (
+          <TouchableOpacity style={styles.errorCard} activeOpacity={0.85} onPress={loadDashboard}>
+            <Ionicons name="warning-outline" size={18} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <View style={styles.heroCard}>
           <View style={styles.heroBadge}>
             <MaterialCommunityIcons
@@ -338,10 +302,10 @@ export default function CasaShowDashboardScreen() {
           </View>
 
           <View style={styles.heroInfo}>
-            <Text style={styles.heroTitle}>{casa.nome_fantasia || 'Casa de Show'}</Text>
-            <Text style={styles.heroSubtitle}>{casa.usuario.tipo}</Text>
+            <Text style={styles.heroTitle}>{casaData.nome_fantasia}</Text>
+            <Text style={styles.heroSubtitle}>CASA DE SHOW</Text>
             <Text style={styles.heroSecondaryText}>
-              {casa.bairro} • {casa.estado}
+              {getCasaAddress(casaData) || 'Endereco nao informado'}
             </Text>
           </View>
         </View>
@@ -349,7 +313,7 @@ export default function CasaShowDashboardScreen() {
         <TouchableOpacity
           style={styles.eventsShortcutCard}
           activeOpacity={0.85}
-          onPress={() => router.push('/events')}
+          onPress={() => router.push('/dashboards/casashow-eventos')}
         >
           <View style={styles.eventsShortcutLeft}>
             <View style={styles.eventsShortcutIcon}>
@@ -368,19 +332,73 @@ export default function CasaShowDashboardScreen() {
         </TouchableOpacity>
 
         <View style={styles.statsGrid}>
-          {summaryCards.map((card) => (
-            <View key={card.title} style={styles.statCard}>
-              <View style={styles.statHeader}>
-                <Text style={styles.statTitle}>{card.title}</Text>
-                <View style={styles.statIcon}>
-                  <Ionicons name={card.icon} size={18} color={colors.primary} />
-                </View>
-              </View>
+          {summaryCards.map((card) => {
+            const CardComponent = card.onPress ? TouchableOpacity : View;
 
-              <Text style={styles.statValue}>{card.value}</Text>
-              <Text style={styles.statSubtitle}>{card.subtitle}</Text>
-            </View>
-          ))}
+            return (
+              <CardComponent
+                key={card.title}
+                style={styles.statCard}
+                activeOpacity={0.85}
+                onPress={card.onPress}
+              >
+                <View style={styles.statHeader}>
+                  <Text style={styles.statTitle}>{card.title}</Text>
+                  <View style={styles.statIcon}>
+                    <Ionicons name={card.icon} size={18} color={colors.primary} />
+                  </View>
+                </View>
+
+                <Text style={styles.statValue}>{card.value}</Text>
+                <Text style={styles.statSubtitle}>{card.subtitle}</Text>
+              </CardComponent>
+            );
+          })}
+        </View>
+
+        <View style={styles.infoCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="time-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Proximos eventos</Text>
+          </View>
+
+          {dashboard.upcomingEvents.length > 0 ? (
+            dashboard.upcomingEvents.slice(0, 4).map((eventItem) => {
+              const eventId = getEventId(eventItem);
+              const hasProposal = dashboard.proposalsByEvent.has(eventId);
+
+              return (
+                <View key={eventId} style={styles.nextEventCard}>
+                  <View style={styles.nextEventTopRow}>
+                    <View style={styles.nextEventTextBox}>
+                      <Text style={styles.nextEventTitle}>{eventItem.titulo}</Text>
+                      <Text style={styles.nextEventText}>
+                        {formatDateTime(eventItem.data_inicio)}
+                      </Text>
+                      <Text style={styles.nextEventText}>{eventItem.local}</Text>
+                    </View>
+
+                    {!hasProposal ? (
+                      <TouchableOpacity
+                        style={styles.addProposalButton}
+                        activeOpacity={0.85}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/dashboards/casashow-propostas',
+                            params: { id_evento: eventId },
+                          })
+                        }
+                      >
+                        <Text style={styles.addProposalButtonText}>Adicionar proposta</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <Text style={styles.emptyText}>Nenhum evento futuro.</Text>
+          )}
         </View>
 
         <View style={styles.infoCard}>
@@ -390,78 +408,34 @@ export default function CasaShowDashboardScreen() {
           </View>
 
           <View style={styles.detailGrid}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>ID do usuário</Text>
-              <Text style={styles.detailValue}>{casa.id_usuario}</Text>
-            </View>
-
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Nome fantasia</Text>
-              <Text style={styles.detailValue}>{casa.nome_fantasia}</Text>
-            </View>
-
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Responsável</Text>
-              <Text style={styles.detailValue}>{casa.usuario.nome}</Text>
-            </View>
-
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Email</Text>
-              <Text style={styles.detailValue}>{casa.usuario.email}</Text>
-            </View>
-
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Telefone</Text>
-              <Text style={styles.detailValue}>
-                {casa.usuario.telefone || 'Não informado'}
-              </Text>
-            </View>
-
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>CNPJ</Text>
-              <Text style={styles.detailValue}>{casa.cnpj}</Text>
-            </View>
-
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Capacidade</Text>
-              <Text style={styles.detailValue}>{casa.capacidade} pessoas</Text>
-            </View>
-
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>CEP</Text>
-              <Text style={styles.detailValue}>{casa.cep}</Text>
-            </View>
-
-            <View style={styles.detailItemFull}>
-              <Text style={styles.detailLabel}>Endereço</Text>
-              <Text style={styles.detailValue}>
-                {casa.endereco}, {casa.bairro} - {casa.estado}
-              </Text>
-            </View>
-
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Latitude</Text>
-              <Text style={styles.detailValue}>{casa.geo_lat}</Text>
-            </View>
-
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Longitude</Text>
-              <Text style={styles.detailValue}>{casa.geo_lng}</Text>
-            </View>
+            {[
+              ['Nome da casa', casaData.nome_fantasia],
+              ['Responsavel', casaData.responsavel],
+              ['Email', casaData.email || 'Nao informado'],
+              ['Telefone', casaData.telefone || 'Nao informado'],
+              ['Endereco', getCasaAddress(casaData) || 'Nao informado'],
+            ].map(([label, value]) => (
+              <View key={label} style={styles.detailItemFull}>
+                <Text style={styles.detailLabel}>{label}</Text>
+                <Text style={styles.detailValue}>{value}</Text>
+              </View>
+            ))}
           </View>
         </View>
 
         <View style={styles.infoCard}>
           <View style={styles.sectionHeader}>
             <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Próximo evento da casa</Text>
+            <Text style={styles.sectionTitle}>Proximo evento da casa</Text>
           </View>
 
-          {dashboard.proximoEvento ? (
+          {dashboard.nextEvent ? (
             <View style={styles.nextEventCard}>
-              <Text style={styles.nextEventTitle}>{dashboard.proximoEvento.titulo}</Text>
-              <Text style={styles.nextEventText}>{dashboard.proximoEvento.data}</Text>
-              <Text style={styles.nextEventText}>{dashboard.proximoEvento.local}</Text>
+              <Text style={styles.nextEventTitle}>{dashboard.nextEvent.titulo}</Text>
+              <Text style={styles.nextEventText}>
+                {formatDateTime(dashboard.nextEvent.data_inicio)}
+              </Text>
+              <Text style={styles.nextEventText}>{dashboard.nextEvent.local}</Text>
             </View>
           ) : (
             <Text style={styles.emptyText}>Nenhum evento futuro.</Text>
@@ -478,21 +452,25 @@ export default function CasaShowDashboardScreen() {
             <Text style={styles.sectionTitle}>Propostas da casa</Text>
           </View>
 
-          {dashboard.propostasCasa.length > 0 ? (
-            dashboard.propostasCasa.map((proposta) => (
-              <View key={proposta.id} style={styles.proposalCard}>
+          {proposals.length > 0 ? (
+            proposals.slice(0, 4).map((proposal) => (
+              <View key={proposal.id_proposta} style={styles.proposalCard}>
                 <View style={styles.proposalInfo}>
-                  <Text style={styles.proposalTitle}>{proposta.artista}</Text>
-                  <Text style={styles.proposalSubtitle}>{proposta.data}</Text>
+                  <Text style={styles.proposalTitle}>{proposal.artista_nome}</Text>
+                  <Text style={styles.proposalSubtitle}>
+                    {formatDateTime(proposal.data_evento)}
+                  </Text>
                 </View>
 
-                <View style={[styles.statusBadge, getStatusStyle(proposta.status)]}>
-                  <Text style={styles.statusText}>{proposta.status}</Text>
+                <View style={[styles.statusBadge, getStatusStyle(proposal.status)]}>
+                  <Text style={styles.statusText}>
+                    {getProposalStatusLabel(proposal.status)}
+                  </Text>
                 </View>
               </View>
             ))
           ) : (
-            <Text style={styles.emptyText}>Nenhuma proposta.</Text>
+            <Text style={styles.emptyText}>Nenhuma proposta enviada.</Text>
           )}
         </View>
 
@@ -500,7 +478,7 @@ export default function CasaShowDashboardScreen() {
           <View style={styles.calendarHeader}>
             <View style={styles.sectionHeaderNoMargin}>
               <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Calendário de eventos do mês</Text>
+              <Text style={styles.sectionTitle}>Calendario de eventos do mes</Text>
             </View>
 
             <View style={styles.legend}>
@@ -510,7 +488,7 @@ export default function CasaShowDashboardScreen() {
           </View>
 
           <Text style={styles.monthTitle}>
-            {MONTH_NAMES[dashboard.calendario.mes - 1]} de {dashboard.calendario.ano}
+            {MONTH_NAMES[dashboard.month - 1]} de {dashboard.year}
           </Text>
 
           <View style={styles.weekHeader}>
@@ -524,7 +502,7 @@ export default function CasaShowDashboardScreen() {
           {calendarWeeks.map((week, index) => (
             <View key={`week-${index}`} style={styles.weekRow}>
               {week.map((day, dayIndex) => {
-                const hasEvent = day && dashboard.calendario.diasComEvento.includes(day);
+                const hasEvent = day && dashboard.daysWithEvents.includes(day);
                 const isSelected = day === selectedDay;
 
                 if (!day) {
@@ -563,17 +541,17 @@ export default function CasaShowDashboardScreen() {
             </Text>
 
             {selectedDayEvents.length > 0 ? (
-              selectedDayEvents.map((evento) => (
-                <View key={evento.id} style={styles.selectedEventCard}>
+              selectedDayEvents.map((eventItem) => (
+                <View key={getEventId(eventItem)} style={styles.selectedEventCard}>
                   <View style={styles.selectedEventLeft}>
-                    <Text style={styles.selectedEventName}>{evento.titulo}</Text>
+                    <Text style={styles.selectedEventName}>{eventItem.titulo}</Text>
                     <Text style={styles.selectedEventMeta}>
-                      {evento.horario} • {evento.artista}
+                      {formatTimeOnly(eventItem.data_inicio)} - {eventItem.local}
                     </Text>
                   </View>
 
-                  <View style={[styles.statusBadge, getStatusStyle(evento.status)]}>
-                    <Text style={styles.statusText}>{evento.status}</Text>
+                  <View style={[styles.statusBadge, getStatusStyle('Confirmado')]}>
+                    <Text style={styles.statusText}>Confirmado</Text>
                   </View>
                 </View>
               ))
@@ -630,6 +608,26 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  iconPlaceholder: {
+    width: 40,
+    height: 40,
+  },
+  errorCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    marginLeft: spacing.sm,
+    flex: 1,
   },
   heroCard: {
     backgroundColor: colors.backgroundCard,
@@ -779,19 +777,49 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 8,
   },
-  detailGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  detailItem: {
-    width: '48%',
+  nextEventCard: {
     backgroundColor: '#101728',
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: borderRadius.md,
     padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  nextEventTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  nextEventTextBox: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  nextEventTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  nextEventText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  addProposalButton: {
+    minHeight: 38,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addProposalButtonText: {
+    ...typography.caption,
+    color: colors.text,
+    fontWeight: '700',
+  },
+  detailGrid: {
+    gap: spacing.sm,
   },
   detailItemFull: {
     width: '100%',
@@ -810,24 +838,6 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.text,
     fontWeight: '700',
-  },
-  nextEventCard: {
-    backgroundColor: '#101728',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  nextEventTitle: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  nextEventText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginBottom: 4,
   },
   emptyText: {
     ...typography.bodySmall,

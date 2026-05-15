@@ -13,6 +13,7 @@ interface ApiRequestConfig extends Omit<RequestInit, 'body'> {
 type UnauthorizedListener = () => void;
 
 const unauthorizedListeners = new Set<UnauthorizedListener>();
+let currentAuthToken: string | null = null;
 
 export class ApiError extends Error {
   status: number;
@@ -31,6 +32,14 @@ export function subscribeUnauthorized(listener: UnauthorizedListener) {
   return () => {
     unauthorizedListeners.delete(listener);
   };
+}
+
+export function setApiAuthToken(token?: string | null) {
+  currentAuthToken = token || null;
+}
+
+export function clearApiAuthToken() {
+  currentAuthToken = null;
 }
 
 function notifyUnauthorized() {
@@ -103,16 +112,24 @@ function createApiClient(baseURL: string) {
     }
 
     if (auth) {
-      const session = await getStoredSession();
+      let token = currentAuthToken;
 
-      if (session?.token) {
-        requestHeaders.set('Authorization', `Bearer ${session.token}`);
+      if (!token) {
+        const session = await getStoredSession();
+        token = session?.token || null;
+        setApiAuthToken(token);
+      }
+
+      if (token) {
+        requestHeaders.set('Authorization', `Bearer ${token}`);
       }
     }
 
+    const normalizedHeaders = Object.fromEntries(requestHeaders.entries());
+
     const response = await fetch(buildUrl(baseURL, path, params), {
       ...requestConfig,
-      headers: requestHeaders,
+      headers: normalizedHeaders,
       body: requestBody,
     });
 

@@ -7,6 +7,7 @@ export function normalizeSession(data: AuthResponse | UserSession): UserSession 
   return {
     email: data.email,
     id: data.id,
+    id_usuario: 'id_usuario' in data && data.id_usuario ? data.id_usuario : data.id,
     nome: data.nome,
     tipo: data.tipo,
     token: data.token,
@@ -24,13 +25,20 @@ export async function getStoredSession(): Promise<UserSession | null> {
     return null;
   }
 
-  return {
+  const session = {
     email: parsed.email,
     id: parsed.id,
+    id_usuario: parsed.id_usuario || parsed.id,
     nome: parsed.nome,
     tipo: parsed.tipo,
     token: parsed.token,
   } as UserSession;
+
+  if (!parsed.id_usuario) {
+    await AsyncStorage.setItem(USER_SESSION_KEY, JSON.stringify(session));
+  }
+
+  return session;
 }
 
 export async function saveSession(data: AuthResponse | UserSession) {

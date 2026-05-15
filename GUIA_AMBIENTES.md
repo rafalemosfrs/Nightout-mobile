@@ -88,6 +88,7 @@ formato:
 {
   "email": "bulls@email.com",
   "id": "4757fd8c-5229-4598-9f86-31799e9e7ad4",
+  "id_usuario": "4757fd8c-5229-4598-9f86-31799e9e7ad4",
   "nome": "bulls",
   "tipo": "CASASHOW",
   "token": "jwt_string"
