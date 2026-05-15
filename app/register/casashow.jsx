@@ -53,13 +53,11 @@ export default function RegisterCasaShowScreen() {
           senha,
           nome_fantasia: nomeFantasia.trim(),
           cnpj: cnpj.replace(/\D/g, ''),
-          capacidade: capacidade.replace(/\D/g, ''),
+          capacidade: Number(capacidade.replace(/\D/g, '')),
           endereco: endereco.trim(),
           bairro: bairro.trim(),
           estado: estado.trim(),
           cep: cep.replace(/\D/g, ''),
-          geo_lat: "0",
-          geo_lng: "0",
         };
 
         const data = await registerCasaShowRequest(payload);

@@ -2,13 +2,11 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '../hooks/useFrameworkReady';
+import { AuthProvider } from '../contexts/AuthContext';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
-export default function RootLayout() {
-  useFrameworkReady();
-
-  useEffect(() => {
-    window.frameworkReady?.();
-  }, []);
+function RootNavigator() {
+  useProtectedRoute();
 
   return (
     <>
@@ -20,5 +18,21 @@ export default function RootLayout() {
       </Stack>
       <StatusBar style="light" />
     </>
+  );
+}
+
+export default function RootLayout() {
+  useFrameworkReady();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.frameworkReady?.();
+    }
+  }, []);
+
+  return (
+    <AuthProvider>
+      <RootNavigator />
+    </AuthProvider>
   );
 }

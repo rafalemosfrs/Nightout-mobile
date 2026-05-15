@@ -19,7 +19,7 @@ export async function initializeLoggedUserInfo() {
       
     loggedUserRole = session?.tipo || session?.role || null;
   } catch (error) {
-    console.warn('Falha ao inicializar ID de usu�rio:', error);
+    console.warn('Falha ao inicializar ID de usuario:', error);
   }
 }
 
