@@ -4,8 +4,10 @@ declare const process:
     }
   | undefined;
 
-const DEFAULT_USERS_API_URL = 'https://night-out-api.onrender.com';
-const DEFAULT_EVENTS_API_URL = 'https://night-out-api-2.onrender.com';
+const DEFAULT_USERS_API_URL = 'https://night-out-api-usuarios.onrender.com';
+const DEFAULT_EVENTS_API_URL = 'https://night-out-api-eventos.onrender.com';
+//const DEFAULT_USERS_API_URL = 'http://localhost:3000';
+//const DEFAULT_EVENTS_API_URL = 'http://localhost:3002';
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '');
