@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://night-out-api.onrender.com";
+const API_BASE_URL = "https://night-out-api-usuarios.onrender.com";
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
