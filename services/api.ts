@@ -146,6 +146,12 @@ export const usersService = {
   getArtist(id: UUID) {
     return usersApi.get<Artista>(`/artista/${id}`);
   },
+  updateArtist(id: UUID, payload: Partial<Artista>) {
+    return usersApi.put<Artista, Partial<Artista>>(`/artista/${id}`, payload);
+  },
+  updateCliente(id: string, payload: any) {
+  return usersApi.put(`/cliente/${id}`, payload);
+  },
   listCasasShow() {
     return usersApi.get<CasaDeShow[]>('/casaDeShow/');
   },
@@ -162,7 +168,6 @@ export const usersService = {
     return usersApi.get<Cliente>(`/cliente/${id}`);
   },
 };
-
 export const eventService = {
   async create(payload: EventoDTO) {
     validateEventoPayload(payload);
@@ -216,6 +221,7 @@ export function loginRequest(payload: LoginPayload) {
 export function registerClientRequest(payload: ClienteCadastroPayload) {
   return usersService.registerClient(payload);
 }
+
 
 export function registerArtistRequest(payload: ArtistaCadastroPayload) {
   return usersService.registerArtist(payload);
