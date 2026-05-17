@@ -1,4 +1,3 @@
-import { loginRequest } from '../services/api';
 import React, { useState } from 'react';
 import {
   View,
@@ -14,15 +13,16 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Input from '../components/Input';
 import Button from '../components/Button';
+import { getHomeRouteForUserType, useAuth } from '../contexts/AuthContext';
 import { colors, spacing, borderRadius, typography, shadows } from '../constants/theme';
 
 const HERO_IMAGE = 'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&h=1000&fit=crop&auto=format';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -63,42 +63,12 @@ export default function LoginScreen() {
     try {
       setLoading(true);
 
-      const data = await loginRequest({
-  email: email.trim().toLowerCase(),
-  senha: password,
-});
+      const session = await login({
+        email: email.trim().toLowerCase(),
+        senha: password,
+      });
 
-console.log('LOGIN DATA:', JSON.stringify(data, null, 2));
-
-const nomeUsuario =
-  data?.nome ||
-  data?.user?.nome ||
-  data?.usuario?.nome ||
-  data?.cliente?.nome ||
-  '';
-
-await AsyncStorage.setItem(
-  'user_session',
-  JSON.stringify({
-    token: data.token,
-    tipo: data.tipo,
-    nome: nomeUsuario,
-    email:
-      data?.email ||
-      data?.user?.email ||
-      data?.usuario?.email ||
-      data?.cliente?.email ||
-      email.trim().toLowerCase(),
-  })
-);
-
-      if (data.tipo === 'ARTISTA') {
-        router.replace('/dashboards/artista');
-      } else if (data.tipo === 'CLIENTE') {
-        router.replace('/dashboards/cliente');
-      } else {
-        router.replace('/dashboards/casashow');
-      }
+      router.replace(getHomeRouteForUserType(session.tipo));
     } catch (error) {
       setApiError(error.message);
     } finally {

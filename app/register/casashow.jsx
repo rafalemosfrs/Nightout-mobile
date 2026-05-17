@@ -6,6 +6,43 @@ import Input from '../../components/Input';
 import Button from '../../components/Button';
 import { registerCasaShowRequest } from '../../services/api';
 
+const FORTALEZA_LOCATION = {
+  geo_lat: '-3.71839',
+  geo_lng: '-38.5434',
+};
+
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizePhone(value) {
+  const digits = onlyDigits(value);
+
+  if (!digits) return value.trim();
+  if (digits.startsWith('55')) return `+${digits}`;
+
+  return `+55${digits}`;
+}
+
+function formatCnpj(value) {
+  const digits = onlyDigits(value);
+
+  if (digits.length !== 14) return value.trim();
+
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(
+    5,
+    8
+  )}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`;
+}
+
+function formatCep(value) {
+  const digits = onlyDigits(value);
+
+  if (digits.length !== 8) return value.trim();
+
+  return `${digits.slice(0, 5)}-${digits.slice(5, 8)}`;
+}
+
 export default function RegisterCasaShowScreen() {
   const [nomeCasa, setNomeCasa] = useState('');
   const [nomeFantasia, setNomeFantasia] = useState('');
@@ -37,6 +74,13 @@ export default function RegisterCasaShowScreen() {
     if (!estado.trim()) newErrors.estado = 'Estado é obrigatório';
     if (!cep.trim()) newErrors.cep = 'CEP é obrigatório';
 
+    if (cnpj.trim() && onlyDigits(cnpj).length !== 14) newErrors.cnpj = 'CNPJ invalido';
+    if (telefone.trim() && onlyDigits(telefone).length < 10) newErrors.telefone = 'Telefone invalido';
+    if (capacidade.trim() && !onlyDigits(capacidade)) {
+      newErrors.capacidade = 'Capacidade invalida (apenas numeros)';
+    }
+    if (cep.trim() && onlyDigits(cep).length !== 8) newErrors.cep = 'CEP invalido';
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -49,17 +93,16 @@ export default function RegisterCasaShowScreen() {
         const payload = {
           nome: nomeCasa.trim(),
           email: email.trim().toLowerCase(),
-          telefone: telefone.replace(/\D/g, ''),
+          telefone: normalizePhone(telefone),
           senha,
           nome_fantasia: nomeFantasia.trim(),
-          cnpj: cnpj.replace(/\D/g, ''),
-          capacidade: capacidade.replace(/\D/g, ''),
+          cnpj: formatCnpj(cnpj),
+          capacidade: onlyDigits(capacidade),
           endereco: endereco.trim(),
           bairro: bairro.trim(),
-          estado: estado.trim(),
-          cep: cep.replace(/\D/g, ''),
-          geo_lat: "0",
-          geo_lng: "0",
+          estado: estado.trim().toUpperCase(),
+          cep: formatCep(cep),
+          ...FORTALEZA_LOCATION,
         };
 
         const data = await registerCasaShowRequest(payload);

@@ -14,6 +14,7 @@ export default function RegisterArtistScreen() {
   const [nomeArtistico, setNomeArtistico] = useState('');
   const [generoMusical, setGeneroMusical] = useState('');
   const [cacheMinimo, setCacheMinimo] = useState('');
+  const [descricao, setDescricao] = useState('');
   const [preferencias, setPreferencias] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -24,6 +25,7 @@ export default function RegisterArtistScreen() {
   const [nomeArtisticoError, setNomeArtisticoError] = useState('');
   const [generoMusicalError, setGeneroMusicalError] = useState('');
   const [cacheMinimoError, setCacheMinimoError] = useState('');
+  const [descricaoError, setDescricaoError] = useState('');
   const [portfolioError, setPortfolioError] = useState('');
   const [apiError, setApiError] = useState('');
 
@@ -35,6 +37,7 @@ export default function RegisterArtistScreen() {
     setNomeArtisticoError('');
     setGeneroMusicalError('');
     setCacheMinimoError('');
+    setDescricaoError('');
     setPortfolioError('');
   };
 
@@ -104,6 +107,11 @@ export default function RegisterArtistScreen() {
       hasError = true;
     }
 
+    if (!descricao.trim()) {
+      setDescricaoError('Informe uma descricao para o perfil artistico.');
+      hasError = true;
+    }
+
     if (!preferencias.trim()) {
       setPortfolioError('Informe o portfólio.');
       hasError = true;
@@ -124,7 +132,8 @@ export default function RegisterArtistScreen() {
         telefone: telefone.trim(),
         nome_artista: nomeArtistico.trim(),
         genero_musical: generoMusical.trim(),
-        cache_min: cacheMinimo.trim(),
+        cache_min: Number(cacheMinimo.replace(',', '.')),
+        descricao: descricao.trim(),
         portifolio: preferencias.trim(),
       });
 
@@ -264,6 +273,22 @@ export default function RegisterArtistScreen() {
             />
             {cacheMinimoError ? (
               <Text style={styles.fieldErrorText}>{cacheMinimoError}</Text>
+            ) : null}
+          </View>
+
+          <View>
+            <Input
+              label="Descricao"
+              placeholder="Resumo do show, repertorio e formato"
+              value={descricao}
+              onChangeText={(text) => {
+                setDescricao(text);
+                setDescricaoError('');
+                setApiError('');
+              }}
+            />
+            {descricaoError ? (
+              <Text style={styles.fieldErrorText}>{descricaoError}</Text>
             ) : null}
           </View>
 
