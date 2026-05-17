@@ -132,6 +132,21 @@ function formatPickerValue(value) {
   return value ? formatDateTime(value.toISOString()) : 'Selecionar data e hora';
 }
 
+function buildCreatedEvent(createdEvent, payload) {
+  const response = createdEvent && typeof createdEvent === 'object' ? createdEvent : {};
+
+  return normalizeEvent({
+    ...response,
+    id_usuario: response.id_usuario || response.id_casa_show || payload.id_usuario,
+    titulo: response.titulo || payload.titulo,
+    descricao: response.descricao || payload.descricao,
+    data_inicio: response.data_inicio || response.data_evento || payload.data_inicio,
+    data_fim: response.data_fim || payload.data_fim,
+    local: response.local || response.endereco || payload.local,
+    status: response.status || payload.status,
+  });
+}
+
 function DateTimePickerModal({ visible, value, title, onCancel, onConfirm }) {
   const initialDate = value || new Date();
   const [monthCursor, setMonthCursor] = useState(
@@ -441,7 +456,7 @@ export default function CasaShowEventosScreen() {
     try {
       setIsSubmitting(true);
 
-      const createdEvent = await eventService.create({
+      const eventPayload = {
         id_usuario: session.id,
         titulo: form.titulo.trim(),
         descricao: form.descricao.trim(),
@@ -449,9 +464,11 @@ export default function CasaShowEventosScreen() {
         data_fim: form.data_fim.toISOString(),
         local: form.local.trim(),
         status: 'DISPONÍVEL',
-      });
+      };
 
-      setEvents((prevState) => [normalizeEvent(createdEvent), ...prevState]);
+      const createdEvent = await eventService.create(eventPayload);
+
+      setEvents((prevState) => [buildCreatedEvent(createdEvent, eventPayload), ...prevState]);
       closeCreateModal();
       resetForm();
       Alert.alert('Sucesso', 'Evento criado com sucesso.');

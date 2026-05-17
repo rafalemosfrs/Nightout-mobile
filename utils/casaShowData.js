@@ -1,5 +1,45 @@
-export function getEventId(evento) {
+function asPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function getRawEventId(evento) {
   return evento?.id_evento || evento?.id || evento?.uuid;
+}
+
+function isEventLikeObject(value) {
+  const source = asPlainObject(value);
+
+  return Boolean(
+    getRawEventId(source) ||
+      source.titulo ||
+      source.data_inicio ||
+      source.data_evento ||
+      source.local
+  );
+}
+
+function unwrapEventPayload(evento = {}) {
+  const source = asPlainObject(evento);
+  const data = asPlainObject(source.data);
+  const candidates = [
+    source.evento,
+    source.Evento,
+    source.event,
+    source.Event,
+    data.evento,
+    data.Evento,
+    data.event,
+    data.Event,
+    data,
+  ];
+
+  return candidates.find(isEventLikeObject) || source;
+}
+
+export function getEventId(evento) {
+  const source = unwrapEventPayload(evento);
+
+  return getRawEventId(source) || getRawEventId(evento);
 }
 
 export function getProposalId(proposta) {
@@ -98,18 +138,32 @@ export function normalizeCasa(casa = {}, session = {}) {
 }
 
 export function normalizeEvent(evento = {}) {
+  const fallback = asPlainObject(evento);
+  const source = unwrapEventPayload(fallback);
+  const dataInicio = source.data_inicio || fallback.data_inicio || source.data_evento || fallback.data_evento || '';
+  const dataFim = source.data_fim || fallback.data_fim || '';
+
   return {
-    ...evento,
-    id_evento: getEventId(evento),
-    id_usuario: evento.id_usuario || evento.id_casa_show || '',
-    titulo: evento.titulo || 'Evento sem titulo',
-    descricao: evento.descricao || '',
-    data_inicio: evento.data_inicio || evento.data_evento || '',
-    data_fim: evento.data_fim || '',
-    local: evento.local || evento.endereco || 'Local nao informado',
-    status: evento.status || (isFutureOrToday(evento.data_inicio) ? 'ATIVO' : 'FINALIZADO'),
-    propostasCasa: Array.isArray(evento.propostasCasa) ? evento.propostasCasa : [],
-    eventoArtistas: Array.isArray(evento.eventoArtistas) ? evento.eventoArtistas : [],
+    ...fallback,
+    ...source,
+    id_evento: getRawEventId(source) || getRawEventId(fallback),
+    id_usuario: source.id_usuario || fallback.id_usuario || source.id_casa_show || fallback.id_casa_show || '',
+    titulo: source.titulo || fallback.titulo || 'Evento sem titulo',
+    descricao: source.descricao || fallback.descricao || '',
+    data_inicio: dataInicio,
+    data_fim: dataFim,
+    local: source.local || fallback.local || source.endereco || fallback.endereco || 'Local nao informado',
+    status: source.status || fallback.status || (isFutureOrToday(dataInicio) ? 'ATIVO' : 'FINALIZADO'),
+    propostasCasa: Array.isArray(source.propostasCasa)
+      ? source.propostasCasa
+      : Array.isArray(fallback.propostasCasa)
+        ? fallback.propostasCasa
+        : [],
+    eventoArtistas: Array.isArray(source.eventoArtistas)
+      ? source.eventoArtistas
+      : Array.isArray(fallback.eventoArtistas)
+        ? fallback.eventoArtistas
+        : [],
   };
 }
 
