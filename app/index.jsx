@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Input from '../components/Input';
 import Button from '../components/Button';
+import { setLoggedUserInfo } from '../constants/id';
 import { colors, spacing, borderRadius, typography, shadows } from '../constants/theme';
 
 const HERO_IMAGE = 'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&h=1000&fit=crop&auto=format';
@@ -72,16 +73,23 @@ console.log('LOGIN DATA:', JSON.stringify(data, null, 2));
 
 const nomeUsuario =
   data?.nome ||
-  data?.user?.nome ||
-  data?.usuario?.nome ||
-  data?.cliente?.nome ||
   '';
+
+  const loggedUserId =
+  data?.id ||
+  data?.usuario?.id || 
+  null;
+
+
+setLoggedUserInfo({ id: loggedUserId, role: data?.tipo });
 
 await AsyncStorage.setItem(
   'user_session',
   JSON.stringify({
     token: data.token,
     tipo: data.tipo,
+    id: loggedUserId,
+    id_usuario: loggedUserId,
     nome: nomeUsuario,
     email:
       data?.email ||
