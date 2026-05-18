@@ -324,74 +324,6 @@ export default function CasaShowEventosScreen() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-<<<<<<< HEAD
-  const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
-  const [userId, setUserId] = useState(USER_ID_MOCK);
-
-  useEffect(() => {
-    async function loadPersistedEvents() {
-      try {
-        const storedEvents = await AsyncStorage.getItem(EVENTS_STORAGE_KEY);
-
-        if (storedEvents) {
-          const parsedEvents = JSON.parse(storedEvents);
-          const safeEvents = Array.isArray(parsedEvents)
-            ? parsedEvents.map(normalizeEventItem)
-            : MOCK_EVENTS;
-
-          setEvents(safeEvents);
-        } else {
-          setEvents(MOCK_EVENTS);
-        }
-      } catch (error) {
-        console.log('Erro ao carregar eventos salvos:', error);
-        setEvents(MOCK_EVENTS);
-      } finally {
-        setHasHydratedStorage(true);
-      }
-    }
-
-    loadPersistedEvents();
-  }, []);
-
-  useEffect(() => {
-    async function loadSessionUserId() {
-      try {
-        const storedSession = await AsyncStorage.getItem('user_session');
-
-        if (!storedSession) return;
-
-        const parsedSession = JSON.parse(storedSession);
-        const sessionId =
-          parsedSession?.id || parsedSession?.id_usuario || USER_ID_MOCK;
-
-        setUserId(sessionId);
-        setForm((prevForm) => ({
-          ...prevForm,
-          id_usuario: sessionId,
-        }));
-      } catch (error) {
-        console.log('Erro ao carregar ID de sessão:', error);
-      }
-    }
-
-    loadSessionUserId();
-  }, []);
-
-  useEffect(() => {
-    async function persistEvents() {
-      if (!hasHydratedStorage) return;
-
-      try {
-        await AsyncStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(events));
-      } catch (error) {
-        console.log('Erro ao salvar eventos localmente:', error);
-      }
-    }
-
-    persistEvents();
-  }, [events, hasHydratedStorage]);
-=======
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -415,7 +347,6 @@ export default function CasaShowEventosScreen() {
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
->>>>>>> integraçãoPerfil
 
   const summary = useMemo(() => {
     const total = events.length;
@@ -525,14 +456,8 @@ export default function CasaShowEventosScreen() {
     try {
       setIsSubmitting(true);
 
-<<<<<<< HEAD
-      const newEvent = normalizeEventItem({
-        id_evento: `evt-${Date.now()}`,
-        id_usuario: form.id_usuario || userId,
-=======
       const eventPayload = {
         id_usuario: session.id,
->>>>>>> integraçãoPerfil
         titulo: form.titulo.trim(),
         descricao: form.descricao.trim(),
         data_inicio: form.data_inicio.toISOString(),

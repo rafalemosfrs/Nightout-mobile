@@ -68,7 +68,7 @@ function parseDate(value) {
 function formatDateTime(value) {
   const date = parseDate(value);
 
-  if (!date) return 'Data nao informada';
+  if (!date) return 'Data não informada';
 
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
@@ -120,7 +120,7 @@ function normalizeProposal(item) {
       casa?.endereco ||
       item?.local ||
       item?.endereco ||
-      'Local nao informado',
+      'Local não informado',
     date,
     status: normalizeStatus(item?.status),
     value: Number(item?.valor_ofertado || item?.valor || 0),
@@ -167,7 +167,7 @@ export default function ArtistDashboardScreen() {
       const response = await proposalService.listByArtist(session.id_usuario);
       setProposals(Array.isArray(response) ? response.map(normalizeProposal) : []);
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel carregar as propostas.');
+      setError(requestError.message || 'Não foi possível carregar as propostas.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -214,7 +214,7 @@ export default function ArtistDashboardScreen() {
 
   async function handleProposalAction(proposal, status) {
     if (!proposal.id) {
-      Alert.alert('Erro', 'A proposta nao possui ID para atualizacao.');
+      Alert.alert('Erro', 'A proposta não possui ID para atualização.');
       return;
     }
 
@@ -229,7 +229,7 @@ export default function ArtistDashboardScreen() {
     } catch (requestError) {
       Alert.alert(
         'Erro',
-        requestError.message || 'Nao foi possivel atualizar a proposta.'
+        requestError.message || 'Não foi possível atualizar a proposta.'
       );
     } finally {
       setUpdatingId(null);
@@ -310,7 +310,6 @@ export default function ArtistDashboardScreen() {
           </View>
         </View>
 
-<<<<<<< HEAD
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={styles.actionButton}
@@ -321,16 +320,16 @@ export default function ArtistDashboardScreen() {
             <Text style={styles.actionButtonText}>Agenda</Text>
           </TouchableOpacity>
 
-<TouchableOpacity
-  style={styles.actionButton}
-  activeOpacity={0.85}
-  onPress={() => router.push('/dashboards/artista-propostas')}
->
-  <Ionicons name="document-text-outline" size={18} color={colors.text} />
-  <Text style={styles.actionButtonText}>Propostas</Text>
-</TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            activeOpacity={0.85}
+            onPress={() => router.push('/dashboards/artista-propostas')}
+          >
+            <Ionicons name="document-text-outline" size={18} color={colors.text} />
+            <Text style={styles.actionButtonText}>Propostas</Text>
+          </TouchableOpacity>
         </View>
-=======
+
         {error ? (
           <TouchableOpacity
             style={styles.errorCard}
@@ -341,7 +340,6 @@ export default function ArtistDashboardScreen() {
             <Text style={styles.errorText}>{error}</Text>
           </TouchableOpacity>
         ) : null}
->>>>>>> integraçãoPerfil
 
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
@@ -353,7 +351,7 @@ export default function ArtistDashboardScreen() {
               {formatCurrency(summary.acceptedTotal)}
             </Text>
             <Text style={styles.statDescription}>
-              {summary.acceptedCount} negociacoes fechadas
+              {summary.acceptedCount} negociações fechadas
             </Text>
           </View>
 
@@ -391,14 +389,14 @@ export default function ArtistDashboardScreen() {
             <Text style={[styles.statValue, styles.valuePurple]}>
               {proposals.length}
             </Text>
-            <Text style={styles.statDescription}>Historico recebido</Text>
+            <Text style={styles.statDescription}>Histórico recebido</Text>
           </View>
         </View>
 
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
             <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Mini calendario</Text>
+            <Text style={styles.sectionTitle}>Mini calendário</Text>
           </View>
 
           {summary.acceptedDates.length > 0 ? (
@@ -416,7 +414,7 @@ export default function ArtistDashboardScreen() {
             </View>
           ) : (
             <Text style={styles.emptyText}>
-              Datas aceitas aparecerao aqui assim que uma proposta for aprovada.
+              Datas aceitas aparecerão aqui assim que uma proposta for aprovada.
             </Text>
           )}
         </View>
@@ -433,7 +431,10 @@ export default function ArtistDashboardScreen() {
               const isUpdating = updatingId === proposal.id;
 
               return (
-                <View key={proposal.id || `${proposal.title}-${proposal.date}`} style={styles.proposalCard}>
+                <View
+                  key={proposal.id || `${proposal.title}-${proposal.date}`}
+                  style={styles.proposalCard}
+                >
                   <View style={styles.dateBox}>
                     <Text style={styles.dateMonth}>{badge.month}</Text>
                     <Text style={styles.dateDay}>{badge.day}</Text>
@@ -518,7 +519,7 @@ export default function ArtistDashboardScreen() {
               />
               <Text style={styles.emptyStateTitle}>Nenhuma proposta encontrada</Text>
               <Text style={styles.emptyStateText}>
-                Quando uma casa enviar uma proposta, ela aparecera neste painel.
+                Quando uma casa enviar uma proposta, ela aparecerá neste painel.
               </Text>
             </View>
           )}
@@ -617,6 +618,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 4,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  actionButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.backgroundCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  actionButtonText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '600',
   },
   errorCard: {
     backgroundColor: 'rgba(239, 68, 68, 0.12)',

@@ -228,21 +228,6 @@ export default function CasaShowDashboardScreen() {
     );
   }
 
-<<<<<<< HEAD
-  if (!dashboard) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Não foi possível carregar a dashboard.</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-  
-  const { casa } = dashboard;
-
-=======
->>>>>>> integraçãoPerfil
   const summaryCards = [
     {
       title: 'Eventos da casa',
