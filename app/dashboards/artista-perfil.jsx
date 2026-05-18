@@ -15,7 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import Button from '../../components/Button';
+import Button from '../../components/Button.jsx';
 import LogoutModal from '../../components/logoutModal.jsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { usersService } from '../../services/api';
@@ -85,16 +85,22 @@ export default function ArtistProfileScreen() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   const loadArtist = useCallback(async () => {
-    if (!session?.id_usuario) return;
+    const artistId = session?.id_usuario || session?.id;
+
+    if (!artistId) {
+      setError('Sessão inválida.');
+      setLoading(false);
+      return;
+    }
 
     try {
       setError('');
-      const response = await usersService.getArtist(session.id_usuario);
+      const response = await usersService.getArtist(artistId);
 
       setArtist(response);
       setForm({
-        nome: response?.usuario?.nome || session.nome || '',
-        email: response?.usuario?.email || session.email || '',
+        nome: response?.usuario?.nome || session?.nome || '',
+        email: response?.usuario?.email || session?.email || '',
         nome_artistico: response?.nome_artista || '',
         genero_musical: response?.genero_musical || '',
         cache_minimo:
@@ -107,7 +113,7 @@ export default function ArtistProfileScreen() {
       });
       setFoto(FOTO_PADRAO);
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel carregar o perfil.');
+      setError(requestError?.message || 'Nao foi possivel carregar o perfil.');
       setArtist(null);
       setForm((current) => ({
         ...current,
@@ -131,13 +137,14 @@ export default function ArtistProfileScreen() {
   }
 
   async function handleSave() {
-    if (!session?.id_usuario) return;
+    const artistId = session?.id_usuario || session?.id;
+    if (!artistId) return;
 
     try {
       setSaving(true);
       setError('');
 
-      await usersService.updateArtist(session.id_usuario, {
+      await usersService.updateArtist(artistId, {
         nome_artista: form.nome_artistico.trim(),
         genero_musical: form.genero_musical.trim(),
         cache_min: form.cache_minimo.trim(),
@@ -155,7 +162,7 @@ export default function ArtistProfileScreen() {
       setEditing(false);
       await loadArtist();
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel salvar as alteracoes.');
+      setError(requestError?.message || 'Nao foi possivel salvar as alteracoes.');
     } finally {
       setSaving(false);
     }

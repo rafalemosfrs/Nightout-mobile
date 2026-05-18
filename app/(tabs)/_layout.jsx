@@ -1,8 +1,14 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/theme';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function TabLayout() {
+  const { session } = useAuth();
+
+  const isCasaShow = session?.tipo === 'CASASHOW';
+  const isCliente = session?.tipo === 'CLIENTE';
+
   return (
     <Tabs
       screenOptions={{
@@ -41,8 +47,9 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="profile-casa-show"
+        name="profile-costumer"
         options={{
+          href: isCliente ? undefined : null,
           title: 'Perfil',
           tabBarIcon: ({ size, color }) => (
             <Ionicons name="person-outline" size={size} color={color} />
@@ -51,7 +58,18 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="profile-costumer"
+        name="profile-casa-show"
+        options={{
+          href: isCasaShow ? undefined : null,
+          title: 'Perfil',
+          tabBarIcon: ({ size, color }) => (
+            <Ionicons name="person-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="profile"
         options={{
           href: null,
         }}

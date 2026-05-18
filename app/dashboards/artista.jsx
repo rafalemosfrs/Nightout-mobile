@@ -156,11 +156,15 @@ export default function ArtistDashboardScreen() {
   const [updatingId, setUpdatingId] = useState(null);
 
   const loadProposals = useCallback(async () => {
-    if (!session?.id) return;
+    if (!session?.id_usuario) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     try {
       setError('');
-      const response = await proposalService.listByArtist(session.id);
+      const response = await proposalService.listByArtist(session.id_usuario);
       setProposals(Array.isArray(response) ? response.map(normalizeProposal) : []);
     } catch (requestError) {
       setError(requestError.message || 'Nao foi possivel carregar as propostas.');
@@ -168,7 +172,7 @@ export default function ArtistDashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session?.id]);
+  }, [session?.id_usuario]);
 
   useEffect(() => {
     loadProposals();
@@ -262,7 +266,7 @@ export default function ArtistDashboardScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/')}
+            onPress={() => router.back()}
           >
             <Ionicons name="chevron-back" size={22} color={colors.text} />
           </TouchableOpacity>

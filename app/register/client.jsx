@@ -93,10 +93,7 @@ export default function RegisterClientScreen() {
       hasError = true;
     }
 
-    if (!dataNascimento.trim()) {
-      setDataNascimentoError('Informe a data de nascimento.');
-      hasError = true;
-    } else if (!validateDataNascimento(dataNascimento)) {
+    if (dataNascimento.trim() && !validateDataNascimento(dataNascimento)) {
       setDataNascimentoError('Use o formato YYYY-MM-DD.');
       hasError = true;
     }
@@ -111,15 +108,20 @@ export default function RegisterClientScreen() {
     try {
       setLoading(true);
 
-      const data = await registerClientRequest({
+      const payload = {
         nome: nome.trim(),
         email: email.trim().toLowerCase(),
         senha,
         telefone: telefone.trim(),
         apelido: apelido.trim(),
         preferencias: preferencias.trim(),
-        data_nascimento: dataNascimento.trim(),
-      });
+      };
+
+      if (dataNascimento.trim()) {
+        payload.data_nascimento = dataNascimento.trim();
+      }
+
+      const data = await registerClientRequest(payload);
 
       Alert.alert('Sucesso', data.message || 'Cliente cadastrado com sucesso!');
       router.replace('/');
