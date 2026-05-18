@@ -1,4 +1,5 @@
 const API_BASE_URL = "https://night-out-api-usuarios.onrender.com";
+const EVENTS_API_BASE_URL = "https://night-out-api-eventos.onrender.com";
 
 async function requestToBase(baseUrl, path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -105,8 +106,45 @@ export function getEvents(token) {
   });
 }
 
+export function getEventsByCasaShow(id, token) {
+  return requestToBase(EVENTS_API_BASE_URL, `/evento/casa/${id}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function createEventRequest(payload, token) {
+  return requestToBase(EVENTS_API_BASE_URL, "/evento", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getPropostasByCasaShow(id, token) {
+  return requestToBase(EVENTS_API_BASE_URL, `/propostaArtista/casa/${id}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export function getCasaShows(token) {
   return request("/casadeshow?page=1&pageSize=1000", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getCasaShowById(id, token) {
+  return request(`/casadeshow/${id}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,

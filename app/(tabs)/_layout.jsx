@@ -21,7 +21,7 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="casashow"
+        name="index"
         options={{
           title: 'Painel',
           tabBarIcon: ({ size, color }) => (
@@ -41,7 +41,7 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="profile"
+        name="profile-casa-show"
         options={{
           title: 'Perfil',
           tabBarIcon: ({ size, color }) => (

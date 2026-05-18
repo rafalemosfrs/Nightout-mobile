@@ -17,39 +17,35 @@ import {
   typography,
   shadows,
 } from '../../constants/theme';
+import { getPropostasByCasaShow } from '../../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STATUS_OPTIONS = ['TODAS', 'ACEITA', 'PENDENTE'];
 
-const MOCK_PROPOSTAS = [
-  {
-    id: 'prop-001',
-    data: 'NOV. 24',
-    titulo: 'Terapia sem fim com Nattan',
-    local: 'Av. Bezerra de Menezes',
-    horario: '22:00',
-    valor: 'R$ 30.000',
-    status: 'ACEITA',
-  },
-  {
-    id: 'prop-002',
-    data: 'NOV. 24',
-    titulo: 'Festa',
-    local: 'Av. Bezerra de Menezes',
-    horario: '22:00',
-    valor: 'R$ 30.000',
-    status: 'ACEITA',
-  },
-  {
-    id: 'prop-003',
-    data: 'NOV. 24',
-    titulo: 'After com Nattan',
-    local: 'Av. Bezerra de Menezes',
-    horario: '22:00',
-    valor: 'R$ 30.000',
-    status: 'PENDENTE',
-  },
-];
+function normalizeProposta(payload = {}) {
+  const evento = payload.evento || {};
+  const data = payload.data_evento || evento.data_inicio || payload.data_proposta || null;
+  const start = data ? new Date(data) : null;
+  
+  let month = '--';
+  let day = '--';
+  if (start && !Number.isNaN(start.getTime())) {
+    month = new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(start).toUpperCase().replace('.', '');
+    day = String(start.getDate()).padStart(2, '0');
+  }
 
+  const time = start && !Number.isNaN(start.getTime()) ? start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--';
+
+  return {
+    id: payload.id_proposta_artista || payload.id || `prop-${Date.now()}`,
+    data: `${month} ${day}`,
+    titulo: evento.titulo || payload.titulo || 'Evento sem título',
+    local: evento.local || payload.local || 'Local não informado',
+    horario: time,
+    valor: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(payload.valor_ofertado || payload.valor || 0)),
+    status: payload.status === 'ACEITA' ? 'ACEITA' : 'PENDENTE',
+  };
+}
 function getStatusStyles(status) {
   if (status === 'ACEITA') {
     return {
@@ -65,14 +61,45 @@ function getStatusStyles(status) {
 }
 
 export default function CasaShowPropostasScreen() {
+  const [propostas, setPropostas] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('TODAS');
   const [showFilters, setShowFilters] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadPropostas() {
+      try {
+        setLoading(true);
+        const storedSession = await AsyncStorage.getItem('user_session');
+        if (!storedSession) {
+          setLoading(false);
+          return;
+        }
+
+        const session = JSON.parse(storedSession);
+        const sessionId = session?.id || session?.id_usuario || session?.id_casa;
+        const sessionToken = session?.token;
+
+        if (sessionId && sessionToken) {
+          const res = await getPropostasByCasaShow(sessionId, sessionToken);
+          const rawPropostas = Array.isArray(res) ? res : res?.items || res?.propostas || [];
+          setPropostas(rawPropostas.map(normalizeProposta));
+        }
+      } catch (err) {
+        console.log('Erro ao carregar propostas:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPropostas();
+  }, []);
 
   const filteredPropostas = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return MOCK_PROPOSTAS.filter((proposta) => {
+    return propostas.filter((proposta) => {
       const matchesStatus =
         selectedStatus === 'TODAS' || proposta.status === selectedStatus;
 
@@ -85,7 +112,7 @@ export default function CasaShowPropostasScreen() {
 
       return matchesStatus && matchesSearch;
     });
-  }, [search, selectedStatus]);
+  }, [propostas, search, selectedStatus]);
  
   
   return (
@@ -98,7 +125,7 @@ export default function CasaShowPropostasScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/dashboards/casashow')}
+            onPress={() => router.navigate('/')}
           >
             <Ionicons name="chevron-back" size={22} color={colors.text} />
           </TouchableOpacity>
@@ -108,7 +135,7 @@ export default function CasaShowPropostasScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/profile')}
+            onPress={() => router.navigate('/profile-casa-show')}
           >
             <Ionicons name="person-outline" size={20} color={colors.text} />
           </TouchableOpacity>
@@ -137,20 +164,20 @@ export default function CasaShowPropostasScreen() {
 
         <View style={styles.summaryGrid}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{MOCK_PROPOSTAS.length}</Text>
+            <Text style={styles.summaryValue}>{propostas.length}</Text>
             <Text style={styles.summaryLabel}>Total</Text>
           </View>
 
           <View style={styles.summaryCard}>
             <Text style={styles.summaryValue}>
-              {MOCK_PROPOSTAS.filter((item) => item.status === 'ACEITA').length}
+              {propostas.filter((item) => item.status === 'ACEITA').length}
             </Text>
             <Text style={styles.summaryLabel}>Aceitas</Text>
           </View>
 
           <View style={styles.summaryCard}>
             <Text style={styles.summaryValue}>
-              {MOCK_PROPOSTAS.filter((item) => item.status === 'PENDENTE').length}
+              {propostas.filter((item) => item.status === 'PENDENTE').length}
             </Text>
             <Text style={styles.summaryLabel}>Pendentes</Text>
           </View>

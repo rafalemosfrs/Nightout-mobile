@@ -26,9 +26,10 @@ import {
   typography,
 } from '../../constants/theme';
 
+import { getEventsByCasaShow, createEventRequest } from '../../services/api';
+
 const USER_ID_MOCK = 'casa-show-001';
 const STATUS_OPTIONS = ['ATIVO', 'CANCELADO', 'FINALIZADO'];
-const EVENTS_STORAGE_KEY = '@nightout:casashow-events';
 
 const INITIAL_FORM = {
   id_evento: '',
@@ -44,51 +45,6 @@ const INITIAL_FORM = {
   propostasArtista: [],
   eventoArtistas: [],
 };
-
-const MOCK_EVENTS = [
-  {
-    id_evento: 'evt-001',
-    id_usuario: USER_ID_MOCK,
-    titulo: 'Sunrise Beachclub com Nattan',
-    descricao: 'Evento principal da casa com show ao vivo, DJs convidados e área VIP.',
-    data_inicio: '2026-02-24T22:00:00.000Z',
-    data_fim: '2026-02-25T04:00:00.000Z',
-    local: 'Av. Beira Mar, 1200',
-    status: 'ATIVO',
-    foto_evento: null,
-    propostasCasa: [],
-    propostasArtista: [],
-    eventoArtistas: [],
-  },
-  {
-    id_evento: 'evt-002',
-    id_usuario: USER_ID_MOCK,
-    titulo: 'Baile Funk Premium',
-    descricao: 'Noite temática com line-up local e estrutura especial de iluminação.',
-    data_inicio: '2026-02-27T23:30:00.000Z',
-    data_fim: '2026-02-28T05:00:00.000Z',
-    local: 'Living Music Hall',
-    status: 'ATIVO',
-    foto_evento: null,
-    propostasCasa: [],
-    propostasArtista: [],
-    eventoArtistas: [],
-  },
-  {
-    id_evento: 'evt-003',
-    id_usuario: USER_ID_MOCK,
-    titulo: 'Especial de Carnaval',
-    descricao: 'Evento sazonal já encerrado, mantido aqui só para visualização.',
-    data_inicio: '2026-02-14T23:00:00.000Z',
-    data_fim: '2026-02-15T03:00:00.000Z',
-    local: 'Centro de Eventos Night Out',
-    status: 'FINALIZADO',
-    foto_evento: null,
-    propostasCasa: [],
-    propostasArtista: [],
-    eventoArtistas: [],
-  },
-];
 
 function formatDateTime(isoString) {
   if (!isoString) return '--';
@@ -168,70 +124,39 @@ export default function CasaShowEventosScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
   const [userId, setUserId] = useState(USER_ID_MOCK);
+  const [token, setToken] = useState(null);
 
   useEffect(() => {
-    async function loadPersistedEvents() {
+    async function loadDashboardData() {
       try {
-        const storedEvents = await AsyncStorage.getItem(EVENTS_STORAGE_KEY);
+        const storedSession = await AsyncStorage.getItem('user_session');
+        if (!storedSession) return;
 
-        if (storedEvents) {
-          const parsedEvents = JSON.parse(storedEvents);
-          const safeEvents = Array.isArray(parsedEvents)
-            ? parsedEvents.map(normalizeEventItem)
-            : MOCK_EVENTS;
+        const session = JSON.parse(storedSession);
+        const sessionId = session?.id || session?.id_usuario || session?.id_casa || USER_ID_MOCK;
+        const sessionToken = session?.token;
 
-          setEvents(safeEvents);
-        } else {
-          setEvents(MOCK_EVENTS);
+        setUserId(sessionId);
+        setToken(sessionToken);
+        setForm((prevForm) => ({
+          ...prevForm,
+          id_usuario: sessionId,
+        }));
+
+        if (sessionId && sessionToken) {
+          const eventsData = await getEventsByCasaShow(sessionId, sessionToken);
+          const safeEvents = Array.isArray(eventsData) ? eventsData : eventsData?.eventos || [];
+          setEvents(safeEvents.map(normalizeEventItem));
         }
       } catch (error) {
-        console.log('Erro ao carregar eventos salvos:', error);
-        setEvents(MOCK_EVENTS);
+        console.log('Erro ao carregar eventos:', error);
       } finally {
         setHasHydratedStorage(true);
       }
     }
 
-    loadPersistedEvents();
+    loadDashboardData();
   }, []);
-
-  useEffect(() => {
-    async function loadSessionUserId() {
-      try {
-        const storedSession = await AsyncStorage.getItem('user_session');
-
-        if (!storedSession) return;
-
-        const parsedSession = JSON.parse(storedSession);
-        const sessionId =
-          parsedSession?.id || parsedSession?.id_usuario || USER_ID_MOCK;
-
-        setUserId(sessionId);
-        setForm((prevForm) => ({
-          ...prevForm,
-          id_usuario: sessionId,
-        }));
-      } catch (error) {
-        console.log('Erro ao carregar ID de sessão:', error);
-      }
-    }
-
-    loadSessionUserId();
-  }, []);
-
-  useEffect(() => {
-    async function persistEvents() {
-      if (!hasHydratedStorage) return;
-
-      try {
-        await AsyncStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(events));
-      } catch (error) {
-        console.log('Erro ao salvar eventos localmente:', error);
-      }
-    }
-
-    persistEvents();
-  }, [events, hasHydratedStorage]);
 
   const summary = useMemo(() => {
     const total = events.length;
@@ -378,11 +303,10 @@ export default function CasaShowEventosScreen() {
       return;
     }
 
-    try {
+      try {
       setIsSubmitting(true);
 
-      const newEvent = normalizeEventItem({
-        id_evento: `evt-${Date.now()}`,
+      const newEvent = {
         id_usuario: form.id_usuario || userId,
         titulo: form.titulo.trim(),
         descricao: form.descricao.trim(),
@@ -390,17 +314,15 @@ export default function CasaShowEventosScreen() {
         data_fim: parsedEnd,
         local: form.local.trim(),
         status: form.status,
-        foto_evento: form.foto_evento || null,
-        propostasCasa: form.propostasCasa || [],
-        propostasArtista: form.propostasArtista || [],
-        eventoArtistas: form.eventoArtistas || [],
-      });
+      };
 
-      setEvents((prevState) => [newEvent, ...prevState]);
+      const createdEvent = await createEventRequest(newEvent, token);
+
+      setEvents((prevState) => [normalizeEventItem(createdEvent), ...prevState]);
       closeCreateModal();
       resetForm();
 
-      Alert.alert('Sucesso', 'Evento criado localmente com foto persistida.');
+      Alert.alert('Sucesso', 'Evento criado com sucesso!');
     } catch (error) {
       console.log('Erro ao criar evento:', error);
       setFormError('Não foi possível criar o evento agora.');
@@ -419,7 +341,7 @@ export default function CasaShowEventosScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/dashboards/casashow')}
+            onPress={() => router.navigate('/')}
           >
             <Ionicons name="chevron-back" size={22} color={colors.text} />
           </TouchableOpacity>
@@ -429,7 +351,7 @@ export default function CasaShowEventosScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/profile')}
+            onPress={() => router.navigate('/profile-casa-show')}
           >
             <Ionicons name="person-outline" size={20} color={colors.text} />
           </TouchableOpacity>

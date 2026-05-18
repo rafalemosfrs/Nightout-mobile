@@ -11,7 +11,7 @@ import {
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { getCasaShows, getEvents, getArtistProposals } from '../../services/api';
+import { getCasaShowById, getEvents, getArtistProposals } from '../../services/api';
 import {
   colors,
   spacing,
@@ -70,23 +70,30 @@ async function getCasaShowDashboardData() {
     throw new Error('Sessão inválida.');
   }
 
-  const casasRes = await getCasaShows(session.token);
+  const sessionId = session.id || session.id_usuario || session.id_casa;
 
-  const casas = Array.isArray(casasRes)
-    ? casasRes
-    : casasRes?.items || casasRes?.casas || casasRes?.casasdeshow || [];
+  let casaLogada = null;
 
-  const casaLogada =
-    casas.find(
-      (c) => c?.email?.toLowerCase() === session.email.toLowerCase() ||
-             c?.usuario?.email?.toLowerCase() === session.email.toLowerCase()
-    ) || null;
-
-  if (!casaLogada) {
-    throw new Error('Casa de show logada não encontrada.');
+  try {
+    const casaRes = await getCasaShowById(sessionId, session.token);
+    if (casaRes && (casaRes.id || casaRes.id_usuario || casaRes.id_casa)) {
+      casaLogada = casaRes;
+    }
+  } catch (err) {
+    console.log('Erro ao buscar casa por ID, caindo pro fallback:', err);
   }
 
-  const casaId = casaLogada.id || casaLogada.id_usuario || casaLogada.id_casa;
+  if (!casaLogada) {
+    console.log('Casa de show não encontrada via ID. Usando dados da sessão.');
+    casaLogada = {
+      id_usuario: sessionId,
+      id_casa: sessionId,
+      nome_fantasia: session.nome || 'Minha Casa de Show',
+      email: session.email,
+    };
+  }
+
+  const casaId = casaLogada.id || casaLogada.id_usuario || casaLogada.id_casa || sessionId;
 
   try {
     const [eventosRes, propostasRes] = await Promise.all([
@@ -253,6 +260,7 @@ export default function CasaShowDashboardScreen() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     async function loadDashboard() {
@@ -266,6 +274,7 @@ export default function CasaShowDashboardScreen() {
         setSelectedDay(data?.calendario?.diaSelecionado || null);
       } catch (error) {
         console.log('Erro ao carregar dashboard da casa de show:', error);
+        setErrorMessage(error?.message || String(error));
       } finally {
         setLoading(false);
       }
@@ -300,6 +309,11 @@ export default function CasaShowDashboardScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Não foi possível carregar a dashboard.</Text>
+          {errorMessage ? (
+            <Text style={{ ...typography.bodySmall, color: colors.error, marginTop: spacing.md, textAlign: 'center' }}>
+              {errorMessage}
+            </Text>
+          ) : null}
         </View>
       </SafeAreaView>
     );
@@ -344,7 +358,14 @@ export default function CasaShowDashboardScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/')}
+            onPress={async () => {
+              try {
+                await AsyncStorage.removeItem('user_session');
+                router.replace('/login');
+              } catch (e) {
+                router.replace('/login');
+              }
+            }}
           >
             <Ionicons name="chevron-back" size={22} color={colors.text} />
           </TouchableOpacity>
@@ -354,7 +375,7 @@ export default function CasaShowDashboardScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/profile-casa-show')}
+            onPress={() => router.navigate('/profile-casa-show')}
           >
             <Ionicons name="person-outline" size={20} color={colors.text} />
           </TouchableOpacity>

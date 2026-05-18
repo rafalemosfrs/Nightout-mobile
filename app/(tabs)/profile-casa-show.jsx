@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,25 +7,53 @@ import {
   Image,
   Pressable,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
 import LogoutModal from "../../components/logoutModal";
+import { getCasaShowById } from "../../services/api";
 
 export default function ProfileCasaShowScreen() {
   const router = useRouter();
   const [modalVisible, setModalVisible] = useState(false);
+  const [casaData, setCasaData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const mock = {
-    nome: "Living",
-    email: "living@gmail.com",
-    cnpj: "19.23.1231.1231/0001-02",
-    endereco: "Av. Bezerra de Menezes",
-    telefone: "85 9 84811171",
-    capacidade: "3000 Pessoas",
-    status: "Ativo",
-    image: "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7",
-  };
+  useEffect(() => {
+    async function loadProfileData() {
+      try {
+        const stored = await AsyncStorage.getItem("user_session");
+        if (!stored) return;
+
+        const session = JSON.parse(stored);
+        const sessionId = session.id || session.id_usuario || session.id_casa;
+
+        if (sessionId && session.token) {
+          const casaRes = await getCasaShowById(sessionId, session.token);
+          if (casaRes && (casaRes.id || casaRes.id_usuario || casaRes.id_casa)) {
+            setCasaData({
+              nome: casaRes.nome_fantasia || casaRes.nome || session.nome,
+              email: casaRes.email || casaRes.usuario?.email || session.email,
+              cnpj: casaRes.cnpj || "Não informado",
+              endereco: casaRes.endereco || "Não informado",
+              telefone: casaRes.telefone || casaRes.usuario?.telefone || "Não informado",
+              capacidade: casaRes.capacidade ? `${casaRes.capacidade} Pessoas` : "Não informado",
+              status: "Ativo",
+              image: "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7",
+            });
+          }
+        }
+      } catch (err) {
+        console.log("Erro ao carregar perfil:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadProfileData();
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -37,6 +65,14 @@ export default function ProfileCasaShowScreen() {
     }
   };
 
+  if (loading || !casaData) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -44,17 +80,17 @@ export default function ProfileCasaShowScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Image source={{ uri: mock.image }} style={styles.avatar} />
+          <Image source={{ uri: casaData.image }} style={styles.avatar} />
 
-          <Text style={styles.name}>{mock.nome}</Text>
-          <Text style={styles.email}>{mock.email}</Text>
+          <Text style={styles.name}>{casaData.nome}</Text>
+          <Text style={styles.email}>{casaData.email}</Text>
 
           <View style={styles.badges}>
             <View style={styles.badgeBlue}>
               <Text style={styles.badgeText}>Casa de Show</Text>
             </View>
             <View style={styles.badgeGreen}>
-              <Text style={styles.badgeText}>{mock.status}</Text>
+              <Text style={styles.badgeText}>{casaData.status}</Text>
             </View>
           </View>
         </View>
@@ -62,12 +98,12 @@ export default function ProfileCasaShowScreen() {
         <View style={styles.infoContainer}>
           <Text style={styles.sectionTitle}>Informações de Casa de Show</Text>
 
-          {renderItem("Nome Fantasia", mock.nome)}
-          {renderItem("CNPJ", mock.cnpj)}
-          {renderItem("Endereço", mock.endereco)}
-          {renderItem("Email", mock.email)}
-          {renderItem("Telefone", mock.telefone)}
-          {renderItem("Capacidade", mock.capacidade)}
+          {renderItem("Nome Fantasia", casaData.nome)}
+          {renderItem("CNPJ", casaData.cnpj)}
+          {renderItem("Endereço", casaData.endereco)}
+          {renderItem("Email", casaData.email)}
+          {renderItem("Telefone", casaData.telefone)}
+          {renderItem("Capacidade", casaData.capacidade)}
         </View>
 
         <View style={styles.footer}>
