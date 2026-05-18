@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -15,9 +16,16 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Button from '../../components/Button';
+import { useAuth } from '../../contexts/AuthContext';
+import { eventService } from '../../services/api';
+import {
+  formatDateTime,
+  getEventId,
+  isFutureOrToday,
+  normalizeEvent,
+  parseApiDate,
+} from '../../utils/casaShowData';
 import {
   borderRadius,
   colors,
@@ -26,138 +34,288 @@ import {
   typography,
 } from '../../constants/theme';
 
-const USER_ID_MOCK = 'casa-show-001';
-const STATUS_OPTIONS = ['ATIVO', 'CANCELADO', 'FINALIZADO'];
-const EVENTS_STORAGE_KEY = '@nightout:casashow-events';
+const STATUS_OPTIONS = ['TODOS', 'ATIVOS', 'FINALIZADOS'];
+const WEEK_DAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+const MONTH_NAMES = [
+  'Janeiro',
+  'Fevereiro',
+  'Marco',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+];
+const HOURS = Array.from({ length: 24 }, (_, index) => index);
+const MINUTES = Array.from({ length: 12 }, (_, index) => index * 5);
 
 const INITIAL_FORM = {
-  id_evento: '',
-  id_usuario: USER_ID_MOCK,
   titulo: '',
   descricao: '',
-  data_inicio: '',
-  data_fim: '',
+  data_inicio: null,
+  data_fim: null,
   local: '',
-  status: 'ATIVO',
-  foto_evento: null,
-  propostasCasa: [],
-  propostasArtista: [],
-  eventoArtistas: [],
 };
 
-const MOCK_EVENTS = [
-  {
-    id_evento: 'evt-001',
-    id_usuario: USER_ID_MOCK,
-    titulo: 'Sunrise Beachclub com Nattan',
-    descricao: 'Evento principal da casa com show ao vivo, DJs convidados e área VIP.',
-    data_inicio: '2026-02-24T22:00:00.000Z',
-    data_fim: '2026-02-25T04:00:00.000Z',
-    local: 'Av. Beira Mar, 1200',
-    status: 'ATIVO',
-    foto_evento: null,
-    propostasCasa: [],
-    propostasArtista: [],
-    eventoArtistas: [],
-  },
-  {
-    id_evento: 'evt-002',
-    id_usuario: USER_ID_MOCK,
-    titulo: 'Baile Funk Premium',
-    descricao: 'Noite temática com line-up local e estrutura especial de iluminação.',
-    data_inicio: '2026-02-27T23:30:00.000Z',
-    data_fim: '2026-02-28T05:00:00.000Z',
-    local: 'Living Music Hall',
-    status: 'ATIVO',
-    foto_evento: null,
-    propostasCasa: [],
-    propostasArtista: [],
-    eventoArtistas: [],
-  },
-  {
-    id_evento: 'evt-003',
-    id_usuario: USER_ID_MOCK,
-    titulo: 'Especial de Carnaval',
-    descricao: 'Evento sazonal já encerrado, mantido aqui só para visualização.',
-    data_inicio: '2026-02-14T23:00:00.000Z',
-    data_fim: '2026-02-15T03:00:00.000Z',
-    local: 'Centro de Eventos Night Out',
-    status: 'FINALIZADO',
-    foto_evento: null,
-    propostasCasa: [],
-    propostasArtista: [],
-    eventoArtistas: [],
-  },
-];
+function getEventLifecycleStatus(eventItem) {
+  const status = String(eventItem?.status || '').toUpperCase();
 
-function formatDateTime(isoString) {
-  if (!isoString) return '--';
+  if (status === 'CANCELADO') return 'CANCELADO';
 
-  const date = new Date(isoString);
-
-  if (Number.isNaN(date.getTime())) return '--';
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
-}
-
-function parsePtBrDateTimeToIso(value) {
-  const sanitized = value.trim();
-  const match = sanitized.match(
-    /^(\d{2})\/(\d{2})\/(\d{4})(?:,)?\s+(\d{2}):(\d{2})$/
-  );
-
-  if (!match) return null;
-
-  const [, day, month, year, hour, minute] = match;
-  const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:00`);
-
-  if (Number.isNaN(date.getTime())) return null;
-
-  return date.toISOString();
+  return isFutureOrToday(eventItem.data_inicio) ? 'ATIVO' : 'FINALIZADO';
 }
 
 function getStatusStyles(status) {
-  switch (status) {
-    case 'ATIVO':
-      return {
-        badge: styles.statusActiveBadge,
-        text: styles.statusActiveText,
-      };
-    case 'FINALIZADO':
-      return {
-        badge: styles.statusFinishedBadge,
-        text: styles.statusFinishedText,
-      };
-    case 'CANCELADO':
-      return {
-        badge: styles.statusCancelledBadge,
-        text: styles.statusCancelledText,
-      };
-    default:
-      return {
-        badge: styles.statusDefaultBadge,
-        text: styles.statusDefaultText,
-      };
+  if (status === 'ATIVO') {
+    return {
+      badge: styles.statusActiveBadge,
+      text: styles.statusActiveText,
+      label: 'Ativo',
+    };
   }
-}
 
-function normalizeEventItem(item) {
+  if (status === 'CANCELADO') {
+    return {
+      badge: styles.statusCanceledBadge,
+      text: styles.statusCanceledText,
+      label: 'Cancelado',
+    };
+  }
+
   return {
-    ...item,
-    foto_evento: item?.foto_evento || null,
-    propostasCasa: item?.propostasCasa || [],
-    propostasArtista: item?.propostasArtista || [],
-    eventoArtistas: item?.eventoArtistas || [],
+    badge: styles.statusFinishedBadge,
+    text: styles.statusFinishedText,
+    label: 'Finalizado',
   };
 }
 
+function buildCalendarMatrix(month, year) {
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  const weeks = [];
+  let currentDay = 1 - firstDayOfMonth;
+
+  while (currentDay <= totalDays) {
+    const week = [];
+
+    for (let i = 0; i < 7; i += 1) {
+      week.push(currentDay < 1 || currentDay > totalDays ? null : currentDay);
+      currentDay += 1;
+    }
+
+    weeks.push(week);
+  }
+
+  return weeks;
+}
+
+function sameDay(a, b) {
+  if (!a || !b) return false;
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function buildDateWithTime(baseDate, hour, minute) {
+  const nextDate = new Date(baseDate);
+  nextDate.setHours(hour, minute, 0, 0);
+  return nextDate;
+}
+
+function formatPickerValue(value) {
+  return value ? formatDateTime(value.toISOString()) : 'Selecionar data e hora';
+}
+
+function buildCreatedEvent(createdEvent, payload) {
+  const response = createdEvent && typeof createdEvent === 'object' ? createdEvent : {};
+
+  return normalizeEvent({
+    ...response,
+    id_usuario: response.id_usuario || response.id_casa_show || payload.id_usuario,
+    titulo: response.titulo || payload.titulo,
+    descricao: response.descricao || payload.descricao,
+    data_inicio: response.data_inicio || response.data_evento || payload.data_inicio,
+    data_fim: response.data_fim || payload.data_fim,
+    local: response.local || response.endereco || payload.local,
+    status: response.status || payload.status,
+  });
+}
+
+function DateTimePickerModal({ visible, value, title, onCancel, onConfirm }) {
+  const initialDate = value || new Date();
+  const [monthCursor, setMonthCursor] = useState(
+    new Date(initialDate.getFullYear(), initialDate.getMonth(), 1)
+  );
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [selectedHour, setSelectedHour] = useState(initialDate.getHours());
+  const [selectedMinute, setSelectedMinute] = useState(
+    Math.round(initialDate.getMinutes() / 5) * 5
+  );
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const nextInitialDate = value || new Date();
+    setMonthCursor(new Date(nextInitialDate.getFullYear(), nextInitialDate.getMonth(), 1));
+    setSelectedDate(nextInitialDate);
+    setSelectedHour(nextInitialDate.getHours());
+    setSelectedMinute(Math.min(Math.round(nextInitialDate.getMinutes() / 5) * 5, 55));
+  }, [value, visible]);
+
+  const calendarWeeks = useMemo(
+    () => buildCalendarMatrix(monthCursor.getMonth(), monthCursor.getFullYear()),
+    [monthCursor]
+  );
+
+  function changeMonth(direction) {
+    setMonthCursor((current) => {
+      const next = new Date(current);
+      next.setMonth(current.getMonth() + direction);
+      return next;
+    });
+  }
+
+  function handleConfirm() {
+    onConfirm(buildDateWithTime(selectedDate, selectedHour, selectedMinute));
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={styles.pickerOverlay}>
+        <View style={styles.pickerCard}>
+          <View style={styles.pickerHeader}>
+            <Text style={styles.pickerTitle}>{title}</Text>
+            <TouchableOpacity activeOpacity={0.85} onPress={onCancel}>
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.monthNavigator}>
+            <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(-1)}>
+              <Ionicons name="chevron-back" size={18} color={colors.text} />
+            </TouchableOpacity>
+
+            <Text style={styles.monthTitle}>
+              {MONTH_NAMES[monthCursor.getMonth()]} de {monthCursor.getFullYear()}
+            </Text>
+
+            <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(1)}>
+              <Ionicons name="chevron-forward" size={18} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.weekHeader}>
+            {WEEK_DAYS.map((day, index) => (
+              <Text key={`${day}-${index}`} style={styles.weekLabel}>
+                {day}
+              </Text>
+            ))}
+          </View>
+
+          {calendarWeeks.map((week, weekIndex) => (
+            <View key={`week-${weekIndex}`} style={styles.weekRow}>
+              {week.map((day, dayIndex) => {
+                if (!day) {
+                  return <View key={`${weekIndex}-${dayIndex}`} style={styles.dayCellEmpty} />;
+                }
+
+                const date = new Date(
+                  monthCursor.getFullYear(),
+                  monthCursor.getMonth(),
+                  day
+                );
+                const isSelected = sameDay(date, selectedDate);
+
+                return (
+                  <TouchableOpacity
+                    key={`${weekIndex}-${dayIndex}`}
+                    style={[styles.dayCell, isSelected && styles.dayCellSelected]}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedDate(date)}
+                  >
+                    <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>
+                      {day}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ))}
+
+          <Text style={styles.timePickerLabel}>Horario</Text>
+          <View style={styles.timePickerRow}>
+            <ScrollView style={styles.timeColumn} showsVerticalScrollIndicator={false}>
+              {HOURS.map((hour) => {
+                const isSelected = selectedHour === hour;
+
+                return (
+                  <TouchableOpacity
+                    key={hour}
+                    style={[styles.timeOption, isSelected && styles.timeOptionSelected]}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedHour(hour)}
+                  >
+                    <Text
+                      style={[
+                        styles.timeOptionText,
+                        isSelected && styles.timeOptionTextSelected,
+                      ]}
+                    >
+                      {String(hour).padStart(2, '0')}h
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <ScrollView style={styles.timeColumn} showsVerticalScrollIndicator={false}>
+              {MINUTES.map((minute) => {
+                const isSelected = selectedMinute === minute;
+
+                return (
+                  <TouchableOpacity
+                    key={minute}
+                    style={[styles.timeOption, isSelected && styles.timeOptionSelected]}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedMinute(minute)}
+                  >
+                    <Text
+                      style={[
+                        styles.timeOptionText,
+                        isSelected && styles.timeOptionTextSelected,
+                      ]}
+                    >
+                      {String(minute).padStart(2, '0')}m
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          <View style={styles.modalButtonsRow}>
+            <View style={styles.modalButtonWrapper}>
+              <Button title="Cancelar" variant="outline" onPress={onCancel} />
+            </View>
+
+            <View style={styles.modalButtonWrapper}>
+              <Button title="Confirmar" onPress={handleConfirm} />
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function CasaShowEventosScreen() {
+  const { session } = useAuth();
   const [events, setEvents] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('TODOS');
@@ -166,6 +324,7 @@ export default function CasaShowEventosScreen() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+<<<<<<< HEAD
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
   const [userId, setUserId] = useState(USER_ID_MOCK);
 
@@ -232,12 +391,41 @@ export default function CasaShowEventosScreen() {
 
     persistEvents();
   }, [events, hasHydratedStorage]);
+=======
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [pickerTarget, setPickerTarget] = useState(null);
+
+  const loadEvents = useCallback(async () => {
+    if (!session?.id) return;
+
+    try {
+      setError('');
+      const response = await eventService.listByCasaShow(session.id);
+      setEvents(Array.isArray(response) ? response.map(normalizeEvent) : []);
+    } catch (requestError) {
+      setError(requestError.message || 'Nao foi possivel carregar os eventos.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [session?.id]);
+
+  useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
+>>>>>>> integraçãoPerfil
 
   const summary = useMemo(() => {
     const total = events.length;
-    const ativos = events.filter((item) => item.status === 'ATIVO').length;
-    const finalizados = events.filter((item) => item.status === 'FINALIZADO').length;
-    const cancelados = events.filter((item) => item.status === 'CANCELADO').length;
+    const ativos = events.filter((item) => getEventLifecycleStatus(item) === 'ATIVO').length;
+    const finalizados = events.filter(
+      (item) => getEventLifecycleStatus(item) === 'FINALIZADO'
+    ).length;
+    const cancelados = events.filter(
+      (item) => getEventLifecycleStatus(item) === 'CANCELADO'
+    ).length;
 
     return { total, ativos, finalizados, cancelados };
   }, [events]);
@@ -247,20 +435,25 @@ export default function CasaShowEventosScreen() {
 
     return [...events]
       .filter((item) => {
+        const lifecycleStatus = getEventLifecycleStatus(item);
         const matchesStatus =
-          selectedStatus === 'TODOS' || item.status === selectedStatus;
+          selectedStatus === 'TODOS' ||
+          (selectedStatus === 'ATIVOS' && lifecycleStatus === 'ATIVO') ||
+          (selectedStatus === 'FINALIZADOS' && lifecycleStatus === 'FINALIZADO');
 
         const matchesSearch =
           !normalizedSearch ||
           item.titulo.toLowerCase().includes(normalizedSearch) ||
           item.local.toLowerCase().includes(normalizedSearch) ||
-          item.status.toLowerCase().includes(normalizedSearch);
+          lifecycleStatus.toLowerCase().includes(normalizedSearch);
 
         return matchesStatus && matchesSearch;
       })
-      .sort(
-        (a, b) => new Date(a.data_inicio).getTime() - new Date(b.data_inicio).getTime()
-      );
+      .sort((a, b) => {
+        const dateA = parseApiDate(a.data_inicio)?.getTime() || 0;
+        const dateB = parseApiDate(b.data_inicio)?.getTime() || 0;
+        return dateA - dateB;
+      });
   }, [events, search, selectedStatus]);
 
   function updateFormField(field, value) {
@@ -283,75 +476,39 @@ export default function CasaShowEventosScreen() {
   function closeCreateModal() {
     setIsModalVisible(false);
     setFormError('');
+    setPickerTarget(null);
   }
 
-  async function handlePickEventImage() {
-    try {
-      if (Platform.OS !== 'web') {
-        const permissionResult =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-        if (!permissionResult.granted) {
-          Alert.alert(
-            'Permissão necessária',
-            'Precisamos de acesso à galeria para selecionar a foto do evento.'
-          );
-          return;
-        }
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.5,
-        base64: true,
-      });
-
-      if (result.canceled || !result.assets?.length) {
-        return;
-      }
-
-      const asset = result.assets[0];
-      const mimeType = asset.mimeType || 'image/jpeg';
-      const previewUri = asset.base64
-        ? `data:${mimeType};base64,${asset.base64}`
-        : asset.uri;
-
-      updateFormField('foto_evento', {
-        previewUri,
-        base64: asset.base64 || null,
-        fileName: asset.fileName || `evento-${Date.now()}.jpg`,
-        mimeType,
-        width: asset.width || null,
-        height: asset.height || null,
-      });
-    } catch (error) {
-      console.log('Erro ao selecionar imagem:', error);
-      Alert.alert('Erro', 'Não foi possível selecionar a imagem.');
-    }
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadEvents();
   }
 
   async function handleCreateEvent() {
     setFormError('');
 
     if (!form.titulo.trim()) {
-      setFormError('Informe o título do evento.');
+      setFormError('Informe o titulo do evento.');
       return;
     }
 
     if (!form.descricao.trim()) {
-      setFormError('Informe a descrição do evento.');
+      setFormError('Informe a descricao do evento.');
       return;
     }
 
-    if (!form.data_inicio.trim()) {
-      setFormError('Informe a data e hora de início.');
+    if (!form.data_inicio) {
+      setFormError('Selecione a data e hora de inicio.');
       return;
     }
 
-    if (!form.data_fim.trim()) {
-      setFormError('Informe a data e hora de fim.');
+    if (!form.data_fim) {
+      setFormError('Selecione a data e hora de fim.');
+      return;
+    }
+
+    if (form.data_inicio.getTime() >= form.data_fim.getTime()) {
+      setFormError('A data de fim precisa ser maior que a data de inicio.');
       return;
     }
 
@@ -360,60 +517,68 @@ export default function CasaShowEventosScreen() {
       return;
     }
 
-    const parsedStart = parsePtBrDateTimeToIso(form.data_inicio);
-    const parsedEnd = parsePtBrDateTimeToIso(form.data_fim);
-
-    if (!parsedStart) {
-      setFormError('A data de início deve estar no formato DD/MM/AAAA HH:mm.');
-      return;
-    }
-
-    if (!parsedEnd) {
-      setFormError('A data de fim deve estar no formato DD/MM/AAAA HH:mm.');
-      return;
-    }
-
-    if (new Date(parsedStart).getTime() >= new Date(parsedEnd).getTime()) {
-      setFormError('A data de fim precisa ser maior que a data de início.');
+    if (!session?.id) {
+      setFormError('Sessao invalida. Faca login novamente para criar eventos.');
       return;
     }
 
     try {
       setIsSubmitting(true);
 
+<<<<<<< HEAD
       const newEvent = normalizeEventItem({
         id_evento: `evt-${Date.now()}`,
         id_usuario: form.id_usuario || userId,
+=======
+      const eventPayload = {
+        id_usuario: session.id,
+>>>>>>> integraçãoPerfil
         titulo: form.titulo.trim(),
         descricao: form.descricao.trim(),
-        data_inicio: parsedStart,
-        data_fim: parsedEnd,
+        data_inicio: form.data_inicio.toISOString(),
+        data_fim: form.data_fim.toISOString(),
         local: form.local.trim(),
-        status: form.status,
-        foto_evento: form.foto_evento || null,
-        propostasCasa: form.propostasCasa || [],
-        propostasArtista: form.propostasArtista || [],
-        eventoArtistas: form.eventoArtistas || [],
-      });
+        status: 'DISPONÍVEL',
+      };
 
-      setEvents((prevState) => [newEvent, ...prevState]);
+      const createdEvent = await eventService.create(eventPayload);
+
+      setEvents((prevState) => [buildCreatedEvent(createdEvent, eventPayload), ...prevState]);
       closeCreateModal();
       resetForm();
-
-      Alert.alert('Sucesso', 'Evento criado localmente com foto persistida.');
-    } catch (error) {
-      console.log('Erro ao criar evento:', error);
-      setFormError('Não foi possível criar o evento agora.');
+      Alert.alert('Sucesso', 'Evento criado com sucesso.');
+    } catch (requestError) {
+      setFormError(requestError.message || 'Nao foi possivel criar o evento agora.');
     } finally {
       setIsSubmitting(false);
     }
   }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando eventos...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const pickerValue = pickerTarget ? form[pickerTarget] : null;
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
+        }
       >
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -429,17 +594,24 @@ export default function CasaShowEventosScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/profile')}
+            onPress={() => router.push('/profile-casa-show')}
           >
             <Ionicons name="person-outline" size={20} color={colors.text} />
           </TouchableOpacity>
         </View>
 
+        {error ? (
+          <TouchableOpacity style={styles.errorCard} activeOpacity={0.85} onPress={loadEvents}>
+            <Ionicons name="warning-outline" size={18} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <View style={styles.heroCard}>
           <View style={styles.heroTextContainer}>
             <Text style={styles.heroTitle}>Eventos da Casa de Show</Text>
             <Text style={styles.heroSubtitle}>
-              Crie novos eventos e gerencie tudo em um só lugar.
+              Crie novos eventos e gerencie tudo em um so lugar.
             </Text>
           </View>
 
@@ -489,7 +661,7 @@ export default function CasaShowEventosScreen() {
                 />
                 <TextInput
                   style={styles.searchInput}
-                  placeholder="Buscar por título, local ou status"
+                  placeholder="Buscar por titulo, local ou status"
                   placeholderTextColor={colors.textMuted}
                   value={search}
                   onChangeText={setSearch}
@@ -509,7 +681,7 @@ export default function CasaShowEventosScreen() {
 
           {showFilters ? (
             <View style={styles.filtersContainer}>
-              {['TODOS', ...STATUS_OPTIONS].map((status) => {
+              {STATUS_OPTIONS.map((status) => {
                 const isSelected = selectedStatus === status;
 
                 return (
@@ -539,24 +711,12 @@ export default function CasaShowEventosScreen() {
           <View style={styles.eventsList}>
             {filteredEvents.length > 0 ? (
               filteredEvents.map((eventItem) => {
-                const statusStyles = getStatusStyles(eventItem.status);
+                const statusStyles = getStatusStyles(getEventLifecycleStatus(eventItem));
 
                 return (
-                  <View key={eventItem.id_evento} style={styles.eventCard}>
+                  <View key={getEventId(eventItem)} style={styles.eventCard}>
                     <View style={styles.eventDateBox}>
-                      {eventItem.foto_evento?.previewUri ? (
-                        <Image
-                          source={{ uri: eventItem.foto_evento.previewUri }}
-                          style={styles.eventThumb}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <Ionicons
-                          name="calendar-outline"
-                          size={18}
-                          color={colors.primary}
-                        />
-                      )}
+                      <Ionicons name="calendar-outline" size={18} color={colors.primary} />
                     </View>
 
                     <View style={styles.eventContent}>
@@ -565,7 +725,7 @@ export default function CasaShowEventosScreen() {
 
                         <View style={[styles.statusBadge, statusStyles.badge]}>
                           <Text style={[styles.statusText, statusStyles.text]}>
-                            {eventItem.status}
+                            {statusStyles.label}
                           </Text>
                         </View>
                       </View>
@@ -590,7 +750,7 @@ export default function CasaShowEventosScreen() {
                           color={colors.textSecondary}
                         />
                         <Text style={styles.metaText}>
-                          {formatDateTime(eventItem.data_inicio)} até{' '}
+                          {formatDateTime(eventItem.data_inicio)} ate{' '}
                           {formatDateTime(eventItem.data_fim)}
                         </Text>
                       </View>
@@ -638,45 +798,9 @@ export default function CasaShowEventosScreen() {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
             >
-              <Text style={styles.fieldLabel}>Foto do Evento</Text>
+              {/* Upload de foto reservado para a proxima etapa da integracao. */}
 
-              <TouchableOpacity
-                activeOpacity={0.85}
-                style={styles.uploadBox}
-                onPress={handlePickEventImage}
-              >
-                {form.foto_evento?.previewUri ? (
-                  <>
-                    <Image
-                      source={{ uri: form.foto_evento.previewUri }}
-                      style={styles.uploadPreview}
-                      resizeMode="cover"
-                    />
-                    <Text style={styles.uploadTitle}>Toque para trocar a foto</Text>
-                    <Text style={styles.uploadSubtitle}>
-                      A imagem será salva localmente junto com o evento
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Ionicons name="image-outline" size={34} color={colors.primary} />
-                    <Text style={styles.uploadTitle}>Clique para adicionar foto</Text>
-                    <Text style={styles.uploadSubtitle}>PNG, JPG até 5MB</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              {form.foto_evento?.previewUri ? (
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  style={styles.removeImageButton}
-                  onPress={() => updateFormField('foto_evento', null)}
-                >
-                  <Text style={styles.removeImageButtonText}>Remover foto</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              <Text style={styles.fieldLabel}>Título do Evento</Text>
+              <Text style={styles.fieldLabel}>Titulo do Evento</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Sunrise Beachclub com Nattan"
@@ -685,10 +809,10 @@ export default function CasaShowEventosScreen() {
                 onChangeText={(value) => updateFormField('titulo', value)}
               />
 
-              <Text style={styles.fieldLabel}>Descrição</Text>
+              <Text style={styles.fieldLabel}>Descricao</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
-                placeholder="Descreva o evento, atrações, regras, etc."
+                placeholder="Descreva o evento, atracoes, regras, etc."
                 placeholderTextColor={colors.textMuted}
                 value={form.descricao}
                 onChangeText={(value) => updateFormField('descricao', value)}
@@ -696,66 +820,38 @@ export default function CasaShowEventosScreen() {
                 textAlignVertical="top"
               />
 
-              <View style={styles.row}>
-                <View style={styles.halfField}>
-                  <Text style={styles.fieldLabel}>Data / Hora de Início</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="24/02/2026 22:00"
-                    placeholderTextColor={colors.textMuted}
-                    value={form.data_inicio}
-                    onChangeText={(value) => updateFormField('data_inicio', value)}
-                  />
-                </View>
+              <Text style={styles.fieldLabel}>Data / Hora de Inicio</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                activeOpacity={0.85}
+                onPress={() => setPickerTarget('data_inicio')}
+              >
+                <Text style={styles.pickerButtonText}>
+                  {formatPickerValue(form.data_inicio)}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+              </TouchableOpacity>
 
-                <View style={styles.halfField}>
-                  <Text style={styles.fieldLabel}>Data / Hora de Fim</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="25/02/2026 04:00"
-                    placeholderTextColor={colors.textMuted}
-                    value={form.data_fim}
-                    onChangeText={(value) => updateFormField('data_fim', value)}
-                  />
-                </View>
-              </View>
+              <Text style={styles.fieldLabel}>Data / Hora de Fim</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                activeOpacity={0.85}
+                onPress={() => setPickerTarget('data_fim')}
+              >
+                <Text style={styles.pickerButtonText}>
+                  {formatPickerValue(form.data_fim)}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+              </TouchableOpacity>
 
               <Text style={styles.fieldLabel}>Local</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Endereço ou descrição do local"
+                placeholder="Endereco ou descricao do local"
                 placeholderTextColor={colors.textMuted}
                 value={form.local}
                 onChangeText={(value) => updateFormField('local', value)}
               />
-
-              <Text style={styles.fieldLabel}>Status</Text>
-              <View style={styles.statusOptionsRow}>
-                {STATUS_OPTIONS.map((status) => {
-                  const isSelected = form.status === status;
-
-                  return (
-                    <TouchableOpacity
-                      key={status}
-                      activeOpacity={0.85}
-                      style={[
-                        styles.statusOption,
-                        isSelected && styles.statusOptionSelected,
-                      ]}
-                      onPress={() => updateFormField('status', status)}
-                    >
-                      <Text
-                        style={[
-                          styles.statusOptionText,
-                          isSelected && styles.statusOptionTextSelected,
-                        ]}
-                      >
-                        {status}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
 
               {formError ? <Text style={styles.formErrorText}>{formError}</Text> : null}
 
@@ -780,6 +876,17 @@ export default function CasaShowEventosScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <DateTimePickerModal
+        visible={!!pickerTarget}
+        value={pickerValue}
+        title={pickerTarget === 'data_inicio' ? 'Inicio do evento' : 'Fim do evento'}
+        onCancel={() => setPickerTarget(null)}
+        onConfirm={(value) => {
+          if (pickerTarget) updateFormField(pickerTarget, value);
+          setPickerTarget(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -792,6 +899,33 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
+  errorCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    marginLeft: spacing.sm,
+    flex: 1,
   },
   topBar: {
     flexDirection: 'row',
@@ -983,12 +1117,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.md,
-    overflow: 'hidden',
-  },
-  eventThumb: {
-    width: '100%',
-    height: '100%',
-    borderRadius: borderRadius.md,
   },
   eventContent: {
     flex: 1,
@@ -1043,17 +1171,11 @@ const styles = StyleSheet.create({
   statusFinishedText: {
     color: '#8B9CFF',
   },
-  statusCancelledBadge: {
+  statusCanceledBadge: {
     backgroundColor: 'rgba(239, 68, 68, 0.16)',
   },
-  statusCancelledText: {
+  statusCanceledText: {
     color: colors.error,
-  },
-  statusDefaultBadge: {
-    backgroundColor: 'rgba(160, 174, 192, 0.14)',
-  },
-  statusDefaultText: {
-    color: colors.textSecondary,
   },
   emptyState: {
     alignItems: 'center',
@@ -1108,48 +1230,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: spacing.sm,
   },
-  uploadBox: {
-    minHeight: 150,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: '#2A3A5E',
-    borderStyle: 'dashed',
-    backgroundColor: '#101728',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.sm,
-    overflow: 'hidden',
-  },
-  uploadPreview: {
-    width: '100%',
-    height: 180,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.sm,
-  },
-  uploadTitle: {
-    ...typography.bodySmall,
-    color: colors.primary,
-    fontWeight: '700',
-    marginTop: spacing.sm,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  uploadSubtitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  removeImageButton: {
-    alignSelf: 'flex-start',
-    marginBottom: spacing.sm,
-  },
-  removeImageButtonText: {
-    ...typography.bodySmall,
-    color: colors.error,
-    fontWeight: '700',
-  },
   input: {
     minHeight: 48,
     borderRadius: borderRadius.md,
@@ -1165,39 +1245,23 @@ const styles = StyleSheet.create({
     minHeight: 110,
     paddingTop: 14,
   },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  halfField: {
-    width: '48.5%',
-  },
-  statusOptionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: spacing.sm,
-  },
-  statusOption: {
-    borderRadius: borderRadius.full,
+  pickerButton: {
+    minHeight: 48,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: '#101728',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    marginRight: spacing.sm,
+    backgroundColor: '#1B2233',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: spacing.sm,
   },
-  statusOptionSelected: {
-    borderColor: colors.primary,
-    backgroundColor: 'rgba(0, 102, 255, 0.14)',
-  },
-  statusOptionText: {
+  pickerButtonText: {
     ...typography.bodySmall,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  statusOptionTextSelected: {
-    color: colors.primary,
+    color: colors.text,
+    flex: 1,
+    marginRight: spacing.sm,
   },
   formErrorText: {
     ...typography.bodySmall,
@@ -1213,5 +1277,130 @@ const styles = StyleSheet.create({
   },
   modalButtonWrapper: {
     width: '48%',
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  pickerCard: {
+    maxHeight: '92%',
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    ...shadows.large,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  pickerTitle: {
+    ...typography.h3,
+    color: colors.text,
+  },
+  monthNavigator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  monthButton: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.backgroundCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthTitle: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
+  },
+  weekHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  weekLabel: {
+    width: '13.5%',
+    textAlign: 'center',
+    ...typography.caption,
+    color: colors.textMuted,
+    fontWeight: '700',
+  },
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  dayCell: {
+    width: '13.5%',
+    aspectRatio: 1,
+    borderRadius: borderRadius.md,
+    backgroundColor: '#101728',
+    borderWidth: 1,
+    borderColor: '#1A2742',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dayCellEmpty: {
+    width: '13.5%',
+    aspectRatio: 1,
+  },
+  dayCellSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: 'rgba(0, 102, 255, 0.12)',
+  },
+  dayText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
+  },
+  dayTextSelected: {
+    color: colors.primary,
+  },
+  timePickerLabel: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  timePickerRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    height: 150,
+  },
+  timeColumn: {
+    flex: 1,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#101728',
+  },
+  timeOption: {
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeOptionSelected: {
+    backgroundColor: 'rgba(0, 102, 255, 0.18)',
+  },
+  timeOptionText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
+  timeOptionTextSelected: {
+    color: colors.primary,
   },
 });

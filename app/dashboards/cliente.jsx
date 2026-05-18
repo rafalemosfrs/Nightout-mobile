@@ -1,16 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Image,
+  RefreshControl,
   ScrollView,
   SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../../contexts/AuthContext';
+import { eventService } from '../../services/api';
+import {
+  formatDateOnly,
+  formatDateTime,
+  getEventId,
+  normalizeEvent,
+  parseApiDate,
+} from '../../utils/casaShowData';
 import {
   colors,
   spacing,
@@ -19,93 +29,110 @@ import {
   shadows,
 } from '../../constants/theme';
 
-const eventosDestaque = [
-  {
-    id: '1',
-    titulo: 'Du e Bielzin',
-    data: '24 fev',
-    imagem:
-      'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=300&q=80',
-  },
-  {
-    id: '2',
-    titulo: 'Terapia sem f..',
-    data: '27 fev',
-    imagem:
-      'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=300&q=80',
-  },
-  {
-    id: '3',
-    titulo: 'Festa',
-    data: '28 fev',
-    imagem:
-      'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=300&q=80',
-  },
-];
-
-const atividadeRecente = [
-  {
-    id: '1',
-    mes: 'NOV.',
-    dia: '24',
-    titulo: 'Terapia sem fim com Nattan',
-    tempo: 'Há duas semanas',
-  },
-  {
-    id: '2',
-    mes: 'NOV.',
-    dia: '25',
-    titulo: 'Festa',
-    tempo: 'Há três semanas',
-  },
-  {
-    id: '3',
-    mes: 'NOV.',
-    dia: '26',
-    titulo: 'After com Nattan',
-    tempo: 'Há quatro semanas',
-  },
-];
+const FALLBACK_EVENT_IMAGE =
+  'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=80';
 
 function getAvatarLetter(nome) {
   if (!nome || typeof nome !== 'string') return 'C';
   return nome.trim().charAt(0).toUpperCase() || 'C';
 }
 
+function formatMonthBadge(value) {
+  const date = parseApiDate(value);
+
+  if (!date) {
+    return {
+      month: '--',
+      day: '--',
+    };
+  }
+
+  return {
+    month: new Intl.DateTimeFormat('pt-BR', { month: 'short' })
+      .format(date)
+      .replace('.', '')
+      .toUpperCase(),
+    day: String(date.getDate()).padStart(2, '0'),
+  };
+}
+
 export default function ClientDashboardScreen() {
-  const [nome, setNome] = useState('Cliente');
+  const { session } = useAuth();
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadEvents = useCallback(async () => {
+    try {
+      setError('');
+      const response = await eventService.list({ page: 1, pageSize: 20 });
+      setEvents(Array.isArray(response) ? response.map(normalizeEvent) : []);
+    } catch (requestError) {
+      setError(requestError.message || 'Nao foi possivel carregar eventos.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const session = await AsyncStorage.getItem('user_session');
+    loadEvents();
+  }, [loadEvents]);
 
-        if (session) {
-          const parsed = JSON.parse(session);
-          setNome(parsed?.nome || 'Cliente');
-        }
-      } catch (error) {
-        console.log('Erro ao carregar sessão:', error);
-      }
+  const dashboard = useMemo(() => {
+    const sortedEvents = [...events].sort((a, b) => {
+      const dateA = parseApiDate(a.data_inicio)?.getTime() || 0;
+      const dateB = parseApiDate(b.data_inicio)?.getTime() || 0;
+      return dateA - dateB;
+    });
+
+    const now = Date.now();
+    const upcomingEvents = sortedEvents.filter((eventItem) => {
+      const date = parseApiDate(eventItem.data_inicio);
+      return date ? date.getTime() >= now : true;
+    });
+
+    return {
+      highlighted: upcomingEvents.slice(0, 3),
+      mainEvent: upcomingEvents[0] || sortedEvents[0] || null,
+      recent: sortedEvents.slice(0, 4),
     };
+  }, [events]);
 
-    loadUser();
-  }, []);
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadEvents();
+  }
+
+  const nome = session?.nome || 'Cliente';
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando eventos...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
+        }
       >
         <View style={styles.topBar}>
-          <TouchableOpacity
-            style={styles.iconButton}
-            activeOpacity={0.85}
-            onPress={() => router.push('/')}
-          >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
-          </TouchableOpacity>
+          <View style={styles.iconPlaceholder} />
 
           <Text style={styles.topBarTitle}>Dashboard do Cliente</Text>
 
@@ -124,15 +151,22 @@ export default function ClientDashboardScreen() {
           </View>
 
           <View style={styles.heroInfo}>
-            <Text style={styles.heroTitle}>Olá, {nome}!</Text>
+            <Text style={styles.heroTitle}>Ola, {nome}!</Text>
 
             <Text style={styles.heroSubtitle}>
-              🎉 Descubra os melhores eventos para você
+              Descubra eventos carregados direto da API.
             </Text>
 
-            <Text style={styles.heroLocation}>📍 Fortaleza, CE</Text>
+            <Text style={styles.heroLocation}>{session?.email}</Text>
           </View>
         </View>
+
+        {error ? (
+          <TouchableOpacity style={styles.errorCard} activeOpacity={0.85} onPress={loadEvents}>
+            <Ionicons name="warning-outline" size={18} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <View style={styles.actions}>
           <TouchableOpacity
@@ -155,114 +189,113 @@ export default function ClientDashboardScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>🔥 Eventos em destaque</Text>
+          <Text style={styles.sectionTitle}>Eventos em destaque</Text>
 
-          <View style={styles.highlightRow}>
-            {eventosDestaque.map((evento) => (
-              <TouchableOpacity
-                key={evento.id}
-                style={styles.highlightItem}
-                activeOpacity={0.85}
-                onPress={() => router.push('/(tabs)/events')}
-              >
-                <Image
-                  source={{ uri: evento.imagem }}
-                  style={styles.highlightImage}
-                />
-                <Text style={styles.highlightTitle} numberOfLines={1}>
-                  {evento.titulo}
-                </Text>
-                <Text style={styles.highlightDate}>{evento.data}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {dashboard.highlighted.length > 0 ? (
+            <View style={styles.highlightRow}>
+              {dashboard.highlighted.map((eventItem) => {
+                const badge = formatMonthBadge(eventItem.data_inicio);
+
+                return (
+                  <TouchableOpacity
+                    key={getEventId(eventItem)}
+                    style={styles.highlightItem}
+                    activeOpacity={0.85}
+                    onPress={() => router.push('/(tabs)/events')}
+                  >
+                    <Image
+                      source={{ uri: eventItem.foto_evento || FALLBACK_EVENT_IMAGE }}
+                      style={styles.highlightImage}
+                    />
+                    <Text style={styles.highlightTitle} numberOfLines={1}>
+                      {eventItem.titulo}
+                    </Text>
+                    <Text style={styles.highlightDate}>
+                      {badge.day} {badge.month}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>Nenhum evento retornado pela API.</Text>
+          )}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>📍 Eventos perto de você</Text>
+          <Text style={styles.sectionTitle}>Proximo evento</Text>
 
-          <TouchableOpacity
-            style={styles.mainEventCard}
-            activeOpacity={0.9}
-            onPress={() => router.push('/(tabs)/events')}
-          >
-            <Image
-              source={{
-                uri: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=80',
-              }}
-              style={styles.mainEventImage}
-            />
-
-            <View style={styles.mainEventHeader}>
-              <Text style={styles.mainEventTitle}>
-                Terapia sem fim com Nattan
-              </Text>
-
-              <Ionicons
-                name="chevron-forward"
-                size={26}
-                color={colors.text}
-              />
-            </View>
-
-            <Text style={styles.mainEventInfo}>📍 Av. Bezerra de Menezes</Text>
-            <Text style={styles.mainEventInfo}>🕒 23:00</Text>
-
+          {dashboard.mainEvent ? (
             <TouchableOpacity
-              style={styles.detailsButton}
-              activeOpacity={0.85}
+              style={styles.mainEventCard}
+              activeOpacity={0.9}
               onPress={() => router.push('/(tabs)/events')}
             >
-              <Text style={styles.detailsText}>Ver detalhes</Text>
-            </TouchableOpacity>
+              <Image
+                source={{ uri: dashboard.mainEvent.foto_evento || FALLBACK_EVENT_IMAGE }}
+                style={styles.mainEventImage}
+              />
 
-            <View style={styles.pagination}>
-              <TouchableOpacity
-                style={[styles.dot, styles.dotActive]}
-                activeOpacity={0.85}
-                onPress={() => router.push('/(tabs)/events')}
-              />
-              <TouchableOpacity
-                style={styles.dot}
-                activeOpacity={0.85}
-                onPress={() => router.push('/(tabs)/events')}
-              />
-              <TouchableOpacity
-                style={styles.dot}
-                activeOpacity={0.85}
-                onPress={() => router.push('/(tabs)/events')}
-              />
-              <TouchableOpacity
-                style={styles.dot}
-                activeOpacity={0.85}
-                onPress={() => router.push('/(tabs)/events')}
-              />
-            </View>
-          </TouchableOpacity>
+              <View style={styles.mainEventHeader}>
+                <Text style={styles.mainEventTitle}>{dashboard.mainEvent.titulo}</Text>
+
+                <Ionicons name="chevron-forward" size={26} color={colors.text} />
+              </View>
+
+              <View style={styles.metaRow}>
+                <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.mainEventInfo}>{dashboard.mainEvent.local}</Text>
+              </View>
+
+              <View style={styles.metaRow}>
+                <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.mainEventInfo}>
+                  {formatDateTime(dashboard.mainEvent.data_inicio)}
+                </Text>
+              </View>
+
+              <View style={styles.detailsButton}>
+                <Text style={styles.detailsText}>Ver detalhes</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.emptyText}>Nenhum evento disponivel.</Text>
+          )}
         </View>
 
         <View style={styles.activityWrapper}>
-          <Text style={styles.activitySectionTitle}>Atividade Recente</Text>
+          <Text style={styles.activitySectionTitle}>Atividade recente</Text>
 
-          {atividadeRecente.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.activityCard}
-              activeOpacity={0.85}
-              onPress={() => router.push('/(tabs)/events')}
-            >
-              <View style={styles.dateBadge}>
-                <Text style={styles.dateMonth}>{item.mes}</Text>
-                <Text style={styles.dateDay}>{item.dia}</Text>
-              </View>
+          {dashboard.recent.length > 0 ? (
+            dashboard.recent.map((eventItem) => {
+              const badge = formatMonthBadge(eventItem.data_inicio);
 
-              <View style={styles.activityTextArea}>
-                <Text style={styles.activityTitle}>{item.titulo}</Text>
-              </View>
+              return (
+                <TouchableOpacity
+                  key={getEventId(eventItem)}
+                  style={styles.activityCard}
+                  activeOpacity={0.85}
+                  onPress={() => router.push('/(tabs)/events')}
+                >
+                  <View style={styles.dateBadge}>
+                    <Text style={styles.dateMonth}>{badge.month}</Text>
+                    <Text style={styles.dateDay}>{badge.day}</Text>
+                  </View>
 
-              <Text style={styles.activityTime}>{item.tempo}</Text>
-            </TouchableOpacity>
-          ))}
+                  <View style={styles.activityTextArea}>
+                    <Text style={styles.activityTitle}>{eventItem.titulo}</Text>
+                    <Text style={styles.activityMeta}>{eventItem.local}</Text>
+                  </View>
+
+                  <Text style={styles.activityTime}>
+                    {formatDateOnly(eventItem.data_inicio)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <Text style={styles.emptyText}>Nenhuma atividade recente.</Text>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -277,6 +310,17 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
   },
   topBar: {
     flexDirection: 'row',
@@ -299,6 +343,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.small,
+  },
+  iconPlaceholder: {
+    width: 40,
+    height: 40,
   },
   heroCard: {
     backgroundColor: colors.backgroundCard,
@@ -342,6 +390,22 @@ const styles = StyleSheet.create({
   heroLocation: {
     ...typography.caption,
     color: colors.textMuted,
+  },
+  errorCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    marginLeft: spacing.sm,
+    flex: 1,
   },
   actions: {
     flexDirection: 'row',
@@ -394,6 +458,7 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     marginBottom: 8,
+    backgroundColor: '#101728',
   },
   highlightTitle: {
     color: colors.text,
@@ -420,6 +485,7 @@ const styles = StyleSheet.create({
     height: 170,
     borderRadius: 12,
     marginBottom: spacing.md,
+    backgroundColor: colors.backgroundCard,
   },
   mainEventHeader: {
     flexDirection: 'row',
@@ -435,10 +501,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginRight: spacing.sm,
   },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
   mainEventInfo: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    marginTop: 4,
+    marginLeft: 6,
+    flex: 1,
   },
   detailsButton: {
     marginTop: spacing.md,
@@ -453,24 +525,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     ...typography.bodySmall,
   },
-  pagination: {
-    marginTop: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  dot: {
-    width: 26,
-    height: 10,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: 'transparent',
-  },
-  dotActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
   activityWrapper: {
     marginTop: spacing.xs,
   },
@@ -481,25 +535,25 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   activityCard: {
-  backgroundColor: colors.backgroundCard,
-  borderRadius: borderRadius.lg,
-  borderWidth: 1,
-  borderColor: colors.border,
-  padding: spacing.md,
-  flexDirection: 'row',
-  alignItems: 'center',
-  marginBottom: spacing.sm,
-  ...shadows.small,
-},
+    backgroundColor: colors.backgroundCard,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    ...shadows.small,
+  },
   dateBadge: {
-  width: 50,
-  height: 50,
-  borderRadius: borderRadius.md,
-  backgroundColor: 'rgba(0, 102, 255, 0.12)', // mais suave
-  alignItems: 'center',
-  justifyContent: 'center',
-  marginRight: spacing.md,
-},
+    width: 50,
+    height: 50,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(0, 102, 255, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
   dateMonth: {
     fontSize: 10,
     color: '#B9C1D9',
@@ -521,10 +575,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
   },
+  activityMeta: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
   activityTime: {
     ...typography.caption,
     color: colors.textSecondary,
     textAlign: 'right',
     maxWidth: 90,
+  },
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
   },
 });
