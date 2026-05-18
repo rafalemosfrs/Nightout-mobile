@@ -234,7 +234,11 @@ export default function ArtistDashboardScreen() {
         </View>
 
         <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.actionButton} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            activeOpacity={0.85}
+            onPress={() => router.push('/dashboards/artista-eventos')}
+          >
             <Ionicons name="calendar-outline" size={18} color={colors.text} />
             <Text style={styles.actionButtonText}>Agenda</Text>
           </TouchableOpacity>
