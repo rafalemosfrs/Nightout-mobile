@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   SafeAreaView,
   ScrollView,
@@ -19,28 +21,109 @@ import {
   shadows,
 } from '../../constants/theme';
 import Button from '../../components/Button';
+import { useAuth } from '../../contexts/AuthContext';
+import { usersService } from '../../services/api';
 
-const artistaMock = {
-  nome: 'Nattan',
-  email: 'nattan@gmail.com',
-  tipo: 'Artista',
-  status: 'Ativo',
-  nomeArtistico: 'Nattan',
-  generoMusical: 'Forró',
-  cacheMinimo: '40.000',
-  telefone: '85 9 84811171',
-  portfolio: 'https://Nattan.com',
-  foto:
-    'https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=400&q=80',
-};
+const FOTO_PADRAO =
+  'https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=400&q=80';
 
 export default function ArtistProfileScreen() {
-  const [nomeArtistico, setNomeArtistico] = useState(artistaMock.nomeArtistico);
-  const [generoMusical, setGeneroMusical] = useState(artistaMock.generoMusical);
-  const [cacheMinimo, setCacheMinimo] = useState(artistaMock.cacheMinimo);
-  const [email, setEmail] = useState(artistaMock.email);
-  const [telefone, setTelefone] = useState(artistaMock.telefone);
-  const [portfolio, setPortfolio] = useState(artistaMock.portfolio);
+  const { session, logout } = useAuth();
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [nomeArtistico, setNomeArtistico] = useState('');
+  const [generoMusical, setGeneroMusical] = useState('');
+  const [cacheMinimo, setCacheMinimo] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [portfolio, setPortfolio] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [foto, setFoto] = useState(FOTO_PADRAO);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    async function loadArtist() {
+      try {
+        if (!session?.id_usuario) {
+          throw new Error('Sessão inválida.');
+        }
+
+        setError('');
+        const artista = await usersService.getArtist(session.id_usuario);
+
+        setNome(artista?.usuario?.nome || session.nome || '');
+        setEmail(artista?.usuario?.email || session.email || '');
+        setNomeArtistico(artista?.nome_artista || '');
+        setGeneroMusical(artista?.genero_musical || '');
+        setCacheMinimo(
+          artista?.cache_min !== undefined && artista?.cache_min !== null
+            ? String(artista.cache_min)
+            : ''
+        );
+        setTelefone(artista?.usuario?.telefone || '');
+        setPortfolio(artista?.portifolio || '');
+        setDescricao(artista?.descricao || '');
+        setFoto(FOTO_PADRAO);
+      } catch (requestError) {
+        setError(requestError?.message || 'Não foi possível carregar o perfil do artista.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadArtist();
+  }, [session]);
+
+  async function handleSave() {
+    try {
+      if (!session?.id_usuario) {
+        throw new Error('Sessão inválida.');
+      }
+
+      setSaving(true);
+      setError('');
+
+      await usersService.updateArtist(session.id_usuario, {
+        nome_artista: nomeArtistico.trim(),
+        genero_musical: generoMusical.trim(),
+        cache_min: cacheMinimo.trim(),
+        descricao: descricao.trim(),
+        portifolio: portfolio.trim(),
+        usuario: [
+          {
+            nome: nome.trim(),
+            email: email.trim(),
+            telefone: telefone.trim(),
+          },
+        ],
+      });
+
+      Alert.alert('Sucesso', 'Perfil atualizado com sucesso!');
+    } catch (requestError) {
+      setError(requestError?.message || 'Não foi possível salvar o perfil.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleLogout() {
+    await logout();
+    router.replace('/');
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando perfil...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -62,19 +145,25 @@ export default function ArtistProfileScreen() {
           <View style={styles.iconPlaceholder} />
         </View>
 
-        <View style={styles.profileCard}>
-          <Image source={{ uri: artistaMock.foto }} style={styles.avatarImage} />
+        {error ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
 
-          <Text style={styles.artistName}>{nomeArtistico || artistaMock.nome}</Text>
+        <View style={styles.profileCard}>
+          <Image source={{ uri: foto }} style={styles.avatarImage} />
+
+          <Text style={styles.artistName}>{nomeArtistico || nome || 'Artista'}</Text>
           <Text style={styles.artistEmail}>{email}</Text>
 
           <View style={styles.badgesRow}>
             <View style={styles.artistBadge}>
-              <Text style={styles.artistBadgeText}>{artistaMock.tipo}</Text>
+              <Text style={styles.artistBadgeText}>Artista</Text>
             </View>
 
             <View style={styles.activeBadge}>
-              <Text style={styles.activeBadgeText}>{artistaMock.status}</Text>
+              <Text style={styles.activeBadgeText}>Ativo</Text>
             </View>
           </View>
         </View>
@@ -127,13 +216,27 @@ export default function ArtistProfileScreen() {
             value={portfolio}
             onChangeText={setPortfolio}
           />
+
+          <InfoRow
+            label="Descrição"
+            value={descricao}
+            onChangeText={setDescricao}
+            multiline
+          />
+
+          <Button
+            title="Salvar Alterações"
+            onPress={handleSave}
+            loading={saving}
+            style={styles.saveButton}
+          />
         </View>
 
         <View style={styles.logoutWrapper}>
           <Button
             title="Sair"
             variant="secondary"
-            onPress={() => router.replace('/')}
+            onPress={handleLogout}
             style={styles.logoutButton}
             textStyle={styles.logoutButtonText}
           />
@@ -143,17 +246,25 @@ export default function ArtistProfileScreen() {
   );
 }
 
-function InfoRow({ label, value, onChangeText, keyboardType = 'default' }) {
+function InfoRow({
+  label,
+  value,
+  onChangeText,
+  keyboardType = 'default',
+  multiline = false,
+}) {
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
 
       <TextInput
-        style={styles.infoInput}
+        style={[styles.infoInput, multiline && styles.infoInputMultiline]}
         value={value}
         onChangeText={onChangeText}
         keyboardType={keyboardType}
         placeholderTextColor={colors.textMuted}
+        multiline={multiline}
+        textAlignVertical={multiline ? 'top' : 'center'}
       />
     </View>
   );
@@ -167,6 +278,30 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
+  errorCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    textAlign: 'center',
   },
   topBar: {
     flexDirection: 'row',
@@ -289,6 +424,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     padding: 0,
     outlineStyle: 'none',
+  },
+  infoInputMultiline: {
+    minHeight: 80,
+  },
+  saveButton: {
+    marginTop: spacing.md,
   },
   logoutWrapper: {
     marginTop: spacing.sm,
