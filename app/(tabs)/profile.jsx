@@ -16,22 +16,22 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Button from '../../components/Button';
-import LogoutModal from '../../components/logoutModal.jsx';
+import LogoutModal from '../../components/logoutModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { usersService } from '../../services/api';
-import { getCasaAddress, normalizeCasa } from '../../utils/casaShowData';
-import {
-  colors,
-  spacing,
-  borderRadius,
-  typography,
-  shadows,
-} from '../../constants/theme';
+import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
 
 const HERO_IMAGE =
-  'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=900&h=900&fit=crop&auto=format';
+  'https://images.unsplash.com/photo-1502685104226-ee32379fefbe?w=900&h=900&fit=crop&auto=format';
 
-function Field({ label, value, onChangeText, editable = true, multiline = false }) {
+function Field({
+  label,
+  value,
+  onChangeText,
+  editable = true,
+  multiline = false,
+  keyboardType = 'default',
+}) {
   return (
     <View style={styles.inputGroup}>
       <Text style={styles.label}>{label}</Text>
@@ -46,25 +46,23 @@ function Field({ label, value, onChangeText, editable = true, multiline = false 
         editable={editable}
         onChangeText={onChangeText}
         multiline={multiline}
+        keyboardType={keyboardType}
         textAlignVertical={multiline ? 'top' : 'center'}
       />
     </View>
   );
 }
 
-export default function ProfileCasaShowScreen() {
+export default function ProfileClienteScreen() {
   const { session, logout } = useAuth();
-  const [casa, setCasa] = useState(null);
+
   const [form, setForm] = useState({
-    nome_fantasia: '',
-    responsavel: '',
+    nome: '',
     email: '',
+    apelido: '',
+    data_nascimento: '',
     telefone: '',
-    cnpj: '',
-    endereco: '',
-    bairro: '',
-    estado: '',
-    cep: '',
+    preferencias: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -73,34 +71,42 @@ export default function ProfileCasaShowScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const loadCasa = useCallback(async () => {
-    if (!session?.id) return;
+  const loadCliente = useCallback(async () => {
+    const clienteId = session?.id_usuario || session?.id;
+
+    if (!clienteId) {
+      setError('Sessão inválida.');
+      setLoading(false);
+      return;
+    }
 
     try {
       setError('');
-      const response = await usersService.getCasaShow(session.id);
-      const normalized = normalizeCasa(response, session);
-      setCasa(normalized);
+      const response = await usersService.getCliente(clienteId);
+
+      let dataNascimentoFormatada = '';
+
+      if (response?.data_nascimento) {
+        const date = new Date(response.data_nascimento);
+        if (!Number.isNaN(date.getTime())) {
+          dataNascimentoFormatada = new Intl.DateTimeFormat('pt-BR').format(date);
+        }
+      }
+
       setForm({
-        nome_fantasia: normalized.nome_fantasia || '',
-        responsavel: normalized.responsavel || '',
-        email: normalized.email || '',
-        telefone: normalized.telefone || '',
-        cnpj: normalized.cnpj || '',
-        endereco: normalized.endereco || '',
-        bairro: normalized.bairro || '',
-        estado: normalized.estado || '',
-        cep: normalized.cep || '',
+        nome: response?.usuario?.nome || session?.nome || '',
+        email: response?.usuario?.email || session?.email || '',
+        apelido: response?.apelido || '',
+        data_nascimento: dataNascimentoFormatada,
+        telefone: response?.usuario?.telefone || '',
+        preferencias: response?.preferencias || '',
       });
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel carregar o perfil.');
-      const normalized = normalizeCasa({}, session);
-      setCasa(normalized);
+      setError(requestError?.message || 'Nao foi possivel carregar o perfil.');
       setForm((current) => ({
         ...current,
-        nome_fantasia: normalized.nome_fantasia,
-        responsavel: normalized.responsavel,
-        email: normalized.email,
+        nome: session?.nome || '',
+        email: session?.email || '',
       }));
     } finally {
       setLoading(false);
@@ -108,8 +114,8 @@ export default function ProfileCasaShowScreen() {
   }, [session]);
 
   useEffect(() => {
-    loadCasa();
-  }, [loadCasa]);
+    loadCliente();
+  }, [loadCliente]);
 
   function updateFormField(field, value) {
     setForm((current) => ({
@@ -119,25 +125,42 @@ export default function ProfileCasaShowScreen() {
   }
 
   async function handleSave() {
-    if (!session?.id) return;
+    const clienteId = session?.id_usuario || session?.id;
+    if (!clienteId) return;
 
     try {
       setSaving(true);
       setError('');
-      const payload = {
-        nome_fantasia: form.nome_fantasia.trim(),
-        telefone: form.telefone.trim(),
-        endereco: form.endereco.trim(),
-        bairro: form.bairro.trim(),
-        estado: form.estado.trim(),
-        cep: form.cep.trim(),
-      };
 
-      await usersService.updateCasaShow(session.id, payload);
+      let dataNascimentoIso;
+
+      if (form.data_nascimento.trim()) {
+        const parts = form.data_nascimento.split('/');
+        if (parts.length === 3) {
+          const [day, month, year] = parts;
+          dataNascimentoIso = new Date(
+            `${year}-${month}-${day}T00:00:00`
+          ).toISOString();
+        }
+      }
+
+      await usersService.updateCliente(clienteId, {
+        apelido: form.apelido.trim(),
+        preferencias: form.preferencias.trim(),
+        data_nascimento: dataNascimentoIso,
+        usuario: [
+          {
+            nome: form.nome.trim(),
+            email: form.email.trim(),
+            telefone: form.telefone.trim(),
+          },
+        ],
+      });
+
       setEditing(false);
-      await loadCasa();
+      await loadCliente();
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel salvar as alteracoes.');
+      setError(requestError?.message || 'Nao foi possivel salvar as alteracoes.');
     } finally {
       setSaving(false);
     }
@@ -154,7 +177,7 @@ export default function ProfileCasaShowScreen() {
     }
   }
 
-  const casaName = form.nome_fantasia || casa?.nome_fantasia || 'Casa de Show';
+  const clienteNome = form.apelido || form.nome || 'Cliente';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -176,7 +199,7 @@ export default function ProfileCasaShowScreen() {
                 <TouchableOpacity
                   style={styles.iconButton}
                   activeOpacity={0.85}
-                  onPress={() => router.push('/dashboards/casashow')}
+                  onPress={() => router.back()}
                 >
                   <Ionicons name="chevron-back" size={22} color={colors.text} />
                 </TouchableOpacity>
@@ -191,9 +214,15 @@ export default function ProfileCasaShowScreen() {
               </View>
 
               <View style={styles.heroContent}>
-                <Text style={styles.heroTitle}>{casaName}</Text>
+                <View style={styles.avatarWrapper}>
+                  <Text style={styles.avatarFallback}>
+                    {(clienteNome || 'CL').slice(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+
+                <Text style={styles.heroTitle}>{clienteNome}</Text>
                 <Text style={styles.heroSubtitle}>
-                  {getCasaAddress(form) || 'Perfil da casa de show'}
+                  {form.email || 'Perfil do cliente'}
                 </Text>
               </View>
             </LinearGradient>
@@ -201,7 +230,7 @@ export default function ProfileCasaShowScreen() {
 
           <View style={styles.profileContainer}>
             <View style={styles.profileContent}>
-              <Text style={styles.authTitle}>Perfil da casa</Text>
+              <Text style={styles.authTitle}>Perfil do cliente</Text>
               <Text style={styles.authSubtitle}>
                 Dados carregados diretamente do microservico de usuarios.
               </Text>
@@ -217,7 +246,7 @@ export default function ProfileCasaShowScreen() {
                     <TouchableOpacity
                       style={styles.errorCard}
                       activeOpacity={0.85}
-                      onPress={loadCasa}
+                      onPress={loadCliente}
                     >
                       <Ionicons name="warning-outline" size={18} color={colors.error} />
                       <Text style={styles.errorText}>{error}</Text>
@@ -225,23 +254,24 @@ export default function ProfileCasaShowScreen() {
                   ) : null}
 
                   <Field
-                    label="Nome da casa"
-                    value={form.nome_fantasia}
+                    label="Nome"
+                    value={form.nome}
                     editable={editing}
-                    onChangeText={(value) => updateFormField('nome_fantasia', value)}
+                    onChangeText={(value) => updateFormField('nome', value)}
                   />
 
                   <Field
-                    label="Responsavel"
-                    value={form.responsavel}
-                    editable={false}
-                    onChangeText={(value) => updateFormField('responsavel', value)}
+                    label="Apelido"
+                    value={form.apelido}
+                    editable={editing}
+                    onChangeText={(value) => updateFormField('apelido', value)}
                   />
 
                   <Field
                     label="Email"
                     value={form.email}
-                    editable={false}
+                    editable={editing}
+                    keyboardType="email-address"
                     onChangeText={(value) => updateFormField('email', value)}
                   />
 
@@ -249,48 +279,23 @@ export default function ProfileCasaShowScreen() {
                     label="Telefone"
                     value={form.telefone}
                     editable={editing}
+                    keyboardType="phone-pad"
                     onChangeText={(value) => updateFormField('telefone', value)}
                   />
 
                   <Field
-                    label="CNPJ"
-                    value={form.cnpj}
-                    editable={false}
-                    onChangeText={(value) => updateFormField('cnpj', value)}
+                    label="Data de nascimento"
+                    value={form.data_nascimento}
+                    editable={editing}
+                    onChangeText={(value) => updateFormField('data_nascimento', value)}
                   />
 
                   <Field
-                    label="Endereco"
-                    value={form.endereco}
+                    label="Preferências"
+                    value={form.preferencias}
                     editable={editing}
-                    onChangeText={(value) => updateFormField('endereco', value)}
-                  />
-
-                  <View style={styles.row}>
-                    <View style={styles.halfField}>
-                      <Field
-                        label="Bairro"
-                        value={form.bairro}
-                        editable={editing}
-                        onChangeText={(value) => updateFormField('bairro', value)}
-                      />
-                    </View>
-
-                    <View style={styles.halfField}>
-                      <Field
-                        label="Estado"
-                        value={form.estado}
-                        editable={editing}
-                        onChangeText={(value) => updateFormField('estado', value)}
-                      />
-                    </View>
-                  </View>
-
-                  <Field
-                    label="CEP"
-                    value={form.cep}
-                    editable={editing}
-                    onChangeText={(value) => updateFormField('cep', value)}
+                    multiline
+                    onChangeText={(value) => updateFormField('preferencias', value)}
                   />
 
                   {editing ? (
@@ -301,7 +306,7 @@ export default function ProfileCasaShowScreen() {
                           variant="outline"
                           onPress={() => {
                             setEditing(false);
-                            loadCasa();
+                            loadCliente();
                           }}
                         />
                       </View>
@@ -381,6 +386,23 @@ const styles = StyleSheet.create({
   },
   heroContent: {
     paddingHorizontal: spacing.lg,
+    alignItems: 'flex-start',
+  },
+  avatarWrapper: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: 'rgba(59, 130, 246, 0.9)',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  avatarFallback: {
+    color: colors.text,
+    fontSize: 30,
+    fontWeight: '700',
   },
   heroTitle: {
     ...typography.h1,
@@ -472,13 +494,6 @@ const styles = StyleSheet.create({
   inputDisabled: {
     opacity: 0.68,
     backgroundColor: '#121827',
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  halfField: {
-    width: '48.5%',
   },
   editButton: {
     marginTop: spacing.md,

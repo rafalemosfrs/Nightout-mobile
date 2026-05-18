@@ -1,49 +1,69 @@
 import React from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
+  ActivityIndicator,
   Modal,
-  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, spacing, borderRadius, typography, shadows } from '../constants/theme';
 
-export default function LogoutModal({
-  visible,
-  onConfirm,
-  onCancel,
-}) {
+export default function LogoutModal({ visible, onCancel, onConfirm, isLoading = false }) {
+  function handleCancel() {
+    if (!isLoading) onCancel?.();
+  }
+
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          <Text style={styles.title}>Sair da conta</Text>
-          <Text style={styles.message}>
-            Tem certeza que deseja sair?
-          </Text>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={handleCancel}
+    >
+      <TouchableWithoutFeedback onPress={handleCancel}>
+        <View style={styles.overlay}>
+          <TouchableWithoutFeedback>
+            <View style={styles.card}>
+              <View style={styles.iconWrapper}>
+                <Ionicons name="log-out-outline" size={28} color={colors.error} />
+              </View>
 
-          <View style={styles.actions}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.buttonCancel,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={onCancel}
-            >
-              <Text style={styles.textCancel}>Cancelar</Text>
-            </Pressable>
+              <Text style={styles.title}>Sair da conta?</Text>
+              <Text style={styles.message}>
+                Voce precisara fazer login novamente para acessar sua conta.
+              </Text>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.buttonConfirm,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={onConfirm}
-            >
-              <Text style={styles.textConfirm}>Sair</Text>
-            </Pressable>
-          </View>
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.cancelButton]}
+                  activeOpacity={0.85}
+                  disabled={isLoading}
+                  onPress={handleCancel}
+                >
+                  <Text style={styles.cancelText}>Cancelar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.confirmButton]}
+                  activeOpacity={0.85}
+                  disabled={isLoading}
+                  onPress={onConfirm}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color={colors.text} />
+                  ) : (
+                    <Text style={styles.confirmText}>Sair</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 }
@@ -51,65 +71,72 @@ export default function LogoutModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.overlay,
+    padding: spacing.lg,
   },
-
-  container: {
-    width: '85%',
-    backgroundColor: '#0f1f3d',
-    borderRadius: 16,
-    padding: 20,
+  card: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.backgroundCard,
+    padding: spacing.lg,
+    ...shadows.large,
   },
-
+  iconWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.28)',
+    marginBottom: spacing.md,
+  },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 10,
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
   },
-
   message: {
-    color: '#cbd5e1',
-    marginBottom: 20,
-    fontSize: 15,
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
   },
-
   actions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
+    gap: spacing.sm,
   },
-
-  buttonCancel: {
+  actionButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#334155',
+    height: 48,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  buttonConfirm: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#ff3b3b',
-    alignItems: 'center',
+  cancelButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.backgroundLight,
   },
-
-  buttonPressed: {
-    transform: [{ scale: 0.95 }],
-    opacity: 0.8,
+  confirmButton: {
+    backgroundColor: colors.error,
   },
-
-  textCancel: {
-    color: '#e2e8f0',
-    fontWeight: '500',
+  cancelText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
   },
-
-  textConfirm: {
-    color: '#fff',
-    fontWeight: '600',
+  confirmText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
   },
 });

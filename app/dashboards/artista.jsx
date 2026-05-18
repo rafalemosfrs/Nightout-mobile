@@ -1,15 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ScrollView,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { proposalService } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   colors,
   spacing,
@@ -18,114 +22,11 @@ import {
   shadows,
 } from '../../constants/theme';
 
-const dashboardMock = {
-  artista: {
-    id: 'artista-id-aqui',
-    nome: 'Du e Bielzin',
-    genero: 'Forró',
-    cidade: 'Fortaleza, CE',
-    avatarLabel: 'DB',
-  },
-  resumo: {
-    saldoMes: 0,
-    showsMes: 0,
-    proximosEventos: 3,
-    totalAcumulado: 416005.08,
-  },
-  saldoUltimosMeses: [
-    { mes: 'SET.', valor: 0 },
-    { mes: 'OUT.', valor: 0 },
-    { mes: 'NOV.', valor: 5.08 },
-    { mes: 'DEZ.', valor: 416000 },
-    { mes: 'JAN.', valor: 0 },
-    { mes: 'FEV.', valor: 0 },
-  ],
-  showsUltimosMeses: [
-    { mes: 'S', quantidade: 0 },
-    { mes: 'O', quantidade: 0 },
-    { mes: 'N', quantidade: 2 },
-    { mes: 'D', quantidade: 6 },
-    { mes: 'J', quantidade: 0 },
-    { mes: 'F', quantidade: 0 },
-  ],
-  proximosEventos: [
-    {
-      id: 'evt-1',
-      data: '24 NOV',
-      titulo: 'Terapia sem fim com Nattan',
-      local: 'Av. Bezerra de Menezes',
-      hora: '22:21',
-      cache: 5,
-      status: 'Confirmado',
-    },
-    {
-      id: 'evt-2',
-      data: '25 NOV',
-      titulo: 'Festa',
-      local: 'Rua PI',
-      hora: '00:20',
-      cache: 0.08,
-      status: 'Pendente',
-    },
-    {
-      id: 'evt-3',
-      data: '30 NOV',
-      titulo: 'Tech Du e Biel',
-      local: 'Av. Washington Soares',
-      hora: '23:59',
-      cache: 30000,
-      status: 'Confirmado',
-    },
-  ],
-  estabelecimentosRecentes: [
-    {
-      id: 'venue-1',
-      nome: 'Living',
-      nota: 4.8,
-    },
-  ],
-  propostasRecentes: [
-    {
-      id: 'prop-1',
-      titulo: 'Proposta Casa Living',
-      valor: 15000,
-      status: 'PENDENTE',
-    },
-    {
-      id: 'prop-2',
-      titulo: 'Proposta Festival Beira Mar',
-      valor: 18000,
-      status: 'ACEITA',
-    },
-  ],
-};
-
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
   }).format(Number(value || 0));
-}
-
-function getMaxSaldo(items) {
-  return Math.max(...items.map((item) => item.valor), 1);
-}
-
-function getMaxShows(items) {
-  return Math.max(...items.map((item) => item.quantidade), 1);
-}
-
-function getStatusStyle(status) {
-  switch (status) {
-    case 'ACEITA':
-    case 'Confirmado':
-      return styles.statusSuccess;
-    case 'PENDENTE':
-    case 'Pendente':
-      return styles.statusPending;
-    default:
-      return styles.statusDefault;
-  }
 }
 
 function getAvatarLabel(nome) {
@@ -140,56 +41,232 @@ function getAvatarLabel(nome) {
   return `${partes[0][0]}${partes[1][0]}`.toUpperCase();
 }
 
+function normalizeStatus(status) {
+  return String(status || 'PENDENTE').toUpperCase();
+}
+
+function isAccepted(status) {
+  return ['ACEITA', 'ACEITO', 'APROVADA', 'APROVADO', 'CONFIRMADO'].includes(
+    normalizeStatus(status)
+  );
+}
+
+function isPending(status) {
+  return ['PENDENTE', 'ENVIADA', 'ABERTA'].includes(normalizeStatus(status));
+}
+
+function getProposalId(item) {
+  return item?.id || item?.id_proposta || item?.id_proposta_casa || item?.uuid;
+}
+
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDateTime(value) {
+  const date = parseDate(value);
+
+  if (!date) return 'Data nao informada';
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatDateBadge(value) {
+  const date = parseDate(value);
+
+  if (!date) {
+    return {
+      month: '--',
+      day: '--',
+    };
+  }
+
+  const month = new Intl.DateTimeFormat('pt-BR', { month: 'short' })
+    .format(date)
+    .replace('.', '')
+    .toUpperCase();
+
+  return {
+    month,
+    day: String(date.getDate()).padStart(2, '0'),
+  };
+}
+
+function normalizeProposal(item) {
+  const evento = item?.evento || {};
+  const casa = item?.casaDeShow || item?.casa || evento?.casaDeShow || {};
+  const date = item?.data_evento || evento?.data_inicio || item?.data_inicio;
+
+  return {
+    raw: item,
+    id: getProposalId(item),
+    title: evento?.titulo || item?.titulo || 'Proposta recebida',
+    houseName:
+      casa?.nome_fantasia ||
+      casa?.nome ||
+      item?.nome_casa ||
+      item?.casa_nome ||
+      'Casa de show',
+    address:
+      evento?.local ||
+      casa?.endereco ||
+      item?.local ||
+      item?.endereco ||
+      'Local nao informado',
+    date,
+    status: normalizeStatus(item?.status),
+    value: Number(item?.valor_ofertado || item?.valor || 0),
+    terms: item?.termos || '',
+  };
+}
+
+function getStatusStyle(status) {
+  if (isAccepted(status)) {
+    return styles.statusSuccess;
+  }
+
+  if (isPending(status)) {
+    return styles.statusPending;
+  }
+
+  return styles.statusDanger;
+}
+
+function getStatusLabel(status) {
+  if (isAccepted(status)) return 'Aceita';
+  if (isPending(status)) return 'Pendente';
+  if (normalizeStatus(status) === 'RECUSADA') return 'Recusada';
+  return normalizeStatus(status);
+}
+
 export default function ArtistDashboardScreen() {
-  const [sessionUser, setSessionUser] = useState(null);
+  const { session } = useAuth();
+  const [proposals, setProposals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [updatingId, setUpdatingId] = useState(null);
 
-  useEffect(() => {
-    async function loadSession() {
-      try {
-        const stored = await AsyncStorage.getItem('user_session');
-
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setSessionUser(parsed);
-        }
-      } catch (error) {
-        console.log('Erro ao carregar sessão', error);
-      }
+  const loadProposals = useCallback(async () => {
+    if (!session?.id_usuario) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
     }
 
-    loadSession();
-  }, []);
+    try {
+      setError('');
+      const response = await proposalService.listByArtist(session.id_usuario);
+      setProposals(Array.isArray(response) ? response.map(normalizeProposal) : []);
+    } catch (requestError) {
+      setError(requestError.message || 'Nao foi possivel carregar as propostas.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [session?.id_usuario]);
 
-  const data = useMemo(() => {
-    const nomeFinal =
-      sessionUser?.nome?.trim() ||
-      sessionUser?.email ||
-      dashboardMock.artista.nome;
+  useEffect(() => {
+    loadProposals();
+  }, [loadProposals]);
+
+  const summary = useMemo(() => {
+    const accepted = proposals.filter((item) => isAccepted(item.status));
+    const pending = proposals.filter((item) => isPending(item.status));
+    const now = Date.now();
+    const futureAccepted = accepted.filter((item) => {
+      const date = parseDate(item.date);
+      return date ? date.getTime() >= now : false;
+    });
 
     return {
-      ...dashboardMock,
-      artista: {
-        ...dashboardMock.artista,
-        nome: nomeFinal,
-        avatarLabel: getAvatarLabel(nomeFinal),
-      },
+      acceptedCount: accepted.length,
+      pendingCount: pending.length,
+      acceptedTotal: accepted.reduce((sum, item) => sum + item.value, 0),
+      nextEvents: futureAccepted.length,
+      acceptedDates: accepted
+        .map((item) => item.date)
+        .filter(Boolean)
+        .slice(0, 8),
     };
-  }, [sessionUser]);
+  }, [proposals]);
 
-  const maxSaldo = getMaxSaldo(data.saldoUltimosMeses);
-  const maxShows = getMaxShows(data.showsUltimosMeses);
+  const sortedProposals = useMemo(() => {
+    return [...proposals].sort((a, b) => {
+      const dateA = parseDate(a.date)?.getTime() || 0;
+      const dateB = parseDate(b.date)?.getTime() || 0;
+      return dateB - dateA;
+    });
+  }, [proposals]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadProposals();
+  }
+
+  async function handleProposalAction(proposal, status) {
+    if (!proposal.id) {
+      Alert.alert('Erro', 'A proposta nao possui ID para atualizacao.');
+      return;
+    }
+
+    try {
+      setUpdatingId(proposal.id);
+      await proposalService.update(proposal.id, { status });
+      setProposals((current) =>
+        current.map((item) =>
+          item.id === proposal.id ? { ...item, status: normalizeStatus(status) } : item
+        )
+      );
+    } catch (requestError) {
+      Alert.alert(
+        'Erro',
+        requestError.message || 'Nao foi possivel atualizar a proposta.'
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const artistName = session?.nome || session?.email || 'Artista';
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
+        }
       >
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/')}
+            onPress={() => router.back()}
           >
             <Ionicons name="chevron-back" size={22} color={colors.text} />
           </TouchableOpacity>
@@ -199,7 +276,7 @@ export default function ArtistDashboardScreen() {
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/profile')}
+            onPress={() => router.push('/dashboards/artista-perfil')}
           >
             <Ionicons name="person-outline" size={20} color={colors.text} />
           </TouchableOpacity>
@@ -207,11 +284,11 @@ export default function ArtistDashboardScreen() {
 
         <View style={styles.heroCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{data.artista.avatarLabel}</Text>
+            <Text style={styles.avatarText}>{getAvatarLabel(artistName)}</Text>
           </View>
 
           <View style={styles.heroInfo}>
-            <Text style={styles.artistName}>{data.artista.nome}</Text>
+            <Text style={styles.artistName}>{artistName}</Text>
 
             <View style={styles.inlineRow}>
               <MaterialCommunityIcons
@@ -219,20 +296,21 @@ export default function ArtistDashboardScreen() {
                 size={16}
                 color={colors.primary}
               />
-              <Text style={styles.heroMeta}>{data.artista.genero}</Text>
+              <Text style={styles.heroMeta}>Propostas recebidas</Text>
             </View>
 
             <View style={styles.inlineRow}>
               <Ionicons
-                name="location-outline"
+                name="mail-outline"
                 size={16}
                 color={colors.textSecondary}
               />
-              <Text style={styles.heroMetaSecondary}>{data.artista.cidade}</Text>
+              <Text style={styles.heroMetaSecondary}>{session?.email}</Text>
             </View>
           </View>
         </View>
 
+<<<<<<< HEAD
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={styles.actionButton}
@@ -252,28 +330,53 @@ export default function ArtistDashboardScreen() {
   <Text style={styles.actionButtonText}>Propostas</Text>
 </TouchableOpacity>
         </View>
+=======
+        {error ? (
+          <TouchableOpacity
+            style={styles.errorCard}
+            activeOpacity={0.85}
+            onPress={loadProposals}
+          >
+            <Ionicons name="warning-outline" size={18} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+          </TouchableOpacity>
+        ) : null}
+>>>>>>> integraçãoPerfil
 
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <View style={styles.statIconGreen}>
               <Ionicons name="cash-outline" size={18} color="#19D38A" />
             </View>
-            <Text style={styles.statTitle}>Saldo do mês</Text>
+            <Text style={styles.statTitle}>Propostas aceitas</Text>
             <Text style={[styles.statValue, styles.valueGreen]}>
-              {formatCurrency(data.resumo.saldoMes)}
+              {formatCurrency(summary.acceptedTotal)}
             </Text>
-            <Text style={styles.statDescription}>Propostas aceitas no mês</Text>
+            <Text style={styles.statDescription}>
+              {summary.acceptedCount} negociacoes fechadas
+            </Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <View style={styles.statIconOrange}>
+              <Ionicons name="document-text-outline" size={18} color="#F59E0B" />
+            </View>
+            <Text style={styles.statTitle}>Pendentes</Text>
+            <Text style={[styles.statValue, styles.valueOrange]}>
+              {summary.pendingCount}
+            </Text>
+            <Text style={styles.statDescription}>Aguardando sua resposta</Text>
           </View>
 
           <View style={styles.statCard}>
             <View style={styles.statIconBlue}>
               <Ionicons name="calendar-outline" size={18} color={colors.primary} />
             </View>
-            <Text style={styles.statTitle}>Shows</Text>
+            <Text style={styles.statTitle}>Shows confirmados</Text>
             <Text style={[styles.statValue, styles.valueBlue]}>
-              {data.resumo.showsMes}
+              {summary.nextEvents}
             </Text>
-            <Text style={styles.statDescription}>Shows confirmados no mês</Text>
+            <Text style={styles.statDescription}>Datas futuras aceitas</Text>
           </View>
 
           <View style={styles.statCard}>
@@ -284,171 +387,141 @@ export default function ArtistDashboardScreen() {
                 color={colors.secondary}
               />
             </View>
-            <Text style={styles.statTitle}>Próximos eventos</Text>
+            <Text style={styles.statTitle}>Total de propostas</Text>
             <Text style={[styles.statValue, styles.valuePurple]}>
-              {data.resumo.proximosEventos}
+              {proposals.length}
             </Text>
-            <Text style={styles.statDescription}>Agenda confirmada</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <View style={styles.statIconOrange}>
-              <Ionicons name="trophy-outline" size={18} color="#F59E0B" />
-            </View>
-            <Text style={styles.statTitle}>Total acumulado</Text>
-            <Text style={[styles.statValue, styles.valueOrange]}>
-              {formatCurrency(data.resumo.totalAcumulado)}
-            </Text>
-            <Text style={styles.statDescription}>Valor total recebido</Text>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="cash-outline" size={18} color="#19D38A" />
-            <Text style={styles.sectionTitle}>Saldo dos últimos 6 meses</Text>
-          </View>
-
-          {data.saldoUltimosMeses.map((item) => {
-            const widthPercent = `${Math.max((item.valor / maxSaldo) * 100, item.valor > 0 ? 6 : 0)}%`;
-
-            return (
-              <View key={item.mes} style={styles.balanceRow}>
-                <View style={styles.balanceTopRow}>
-                  <Text style={styles.balanceMonth}>{item.mes}</Text>
-                  <Text style={styles.balanceValue}>{formatCurrency(item.valor)}</Text>
-                </View>
-
-                <View style={styles.balanceTrack}>
-                  <View style={[styles.balanceBar, { width: widthPercent }]} />
-                </View>
-              </View>
-            );
-          })}
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="bar-chart-outline" size={18} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Shows dos últimos 6 meses</Text>
-          </View>
-
-          <View style={styles.chartArea}>
-            {data.showsUltimosMeses.map((item) => {
-              const height = `${Math.max((item.quantidade / maxShows) * 100, item.quantidade > 0 ? 8 : 3)}%`;
-
-              return (
-                <View key={item.mes} style={styles.chartColumn}>
-                  <Text style={styles.chartValue}>
-                    {item.quantidade > 0 ? item.quantidade : ''}
-                  </Text>
-                  <View style={styles.chartTrack}>
-                    <View style={[styles.chartBar, { height }]} />
-                  </View>
-                  <Text style={styles.chartLabel}>{item.mes}</Text>
-                </View>
-              );
-            })}
+            <Text style={styles.statDescription}>Historico recebido</Text>
           </View>
         </View>
 
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
             <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Próximos eventos</Text>
+            <Text style={styles.sectionTitle}>Mini calendario</Text>
           </View>
 
-          {data.proximosEventos.map((evento) => (
-            <View key={evento.id} style={styles.eventCard}>
-              <View style={styles.eventDateBox}>
-                <Text style={styles.eventDateText}>{evento.data}</Text>
-              </View>
+          {summary.acceptedDates.length > 0 ? (
+            <View style={styles.calendarGrid}>
+              {summary.acceptedDates.map((dateValue, index) => {
+                const badge = formatDateBadge(dateValue);
 
-              <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle}>{evento.titulo}</Text>
-
-                <View style={styles.inlineRow}>
-                  <Ionicons
-                    name="location-outline"
-                    size={14}
-                    color={colors.textSecondary}
-                  />
-                  <Text style={styles.eventMeta}>{evento.local}</Text>
-                </View>
-
-                <View style={styles.eventFooter}>
-                  <View style={styles.inlineRow}>
-                    <Ionicons
-                      name="time-outline"
-                      size={14}
-                      color={colors.textSecondary}
-                    />
-                    <Text style={styles.eventMeta}>{evento.hora}</Text>
+                return (
+                  <View key={`${dateValue}-${index}`} style={styles.calendarDay}>
+                    <Text style={styles.calendarMonth}>{badge.month}</Text>
+                    <Text style={styles.calendarDate}>{badge.day}</Text>
                   </View>
-
-                  <Text style={styles.eventCache}>{formatCurrency(evento.cache)}</Text>
-                </View>
-              </View>
-
-              <View style={[styles.statusBadge, getStatusStyle(evento.status)]}>
-                <Text style={styles.statusText}>{evento.status}</Text>
-              </View>
+                );
+              })}
             </View>
-          ))}
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons
-              name="office-building-outline"
-              size={18}
-              color={colors.secondary}
-            />
-            <Text style={styles.sectionTitle}>Estabelecimentos recentes</Text>
-          </View>
-
-          {data.estabelecimentosRecentes.map((item) => (
-            <View key={item.id} style={styles.venueCard}>
-              <View style={styles.venueIcon}>
-                <MaterialCommunityIcons
-                  name="office-building"
-                  size={20}
-                  color={colors.secondary}
-                />
-              </View>
-
-              <View style={styles.venueInfo}>
-                <Text style={styles.venueName}>{item.nome}</Text>
-              </View>
-
-              <View style={styles.ratingBadge}>
-                <Ionicons name="star" size={14} color="#F59E0B" />
-                <Text style={styles.ratingText}>{item.nota}</Text>
-              </View>
-            </View>
-          ))}
+          ) : (
+            <Text style={styles.emptyText}>
+              Datas aceitas aparecerao aqui assim que uma proposta for aprovada.
+            </Text>
+          )}
         </View>
 
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
             <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Propostas recentes</Text>
+            <Text style={styles.sectionTitle}>Propostas do artista</Text>
           </View>
 
-          {data.propostasRecentes.map((proposta) => (
-            <View key={proposta.id} style={styles.proposalCard}>
-              <View style={styles.proposalInfo}>
-                <Text style={styles.proposalTitle}>{proposta.titulo}</Text>
-                <Text style={styles.proposalValue}>
-                  {formatCurrency(proposta.valor)}
-                </Text>
-              </View>
+          {sortedProposals.length > 0 ? (
+            sortedProposals.map((proposal) => {
+              const badge = formatDateBadge(proposal.date);
+              const isUpdating = updatingId === proposal.id;
 
-              <View style={[styles.statusBadge, getStatusStyle(proposta.status)]}>
-                <Text style={styles.statusText}>{proposta.status}</Text>
-              </View>
+              return (
+                <View key={proposal.id || `${proposal.title}-${proposal.date}`} style={styles.proposalCard}>
+                  <View style={styles.dateBox}>
+                    <Text style={styles.dateMonth}>{badge.month}</Text>
+                    <Text style={styles.dateDay}>{badge.day}</Text>
+                  </View>
+
+                  <View style={styles.proposalContent}>
+                    <View style={styles.proposalHeader}>
+                      <Text style={styles.proposalTitle} numberOfLines={1}>
+                        {proposal.title}
+                      </Text>
+
+                      <View style={[styles.statusBadge, getStatusStyle(proposal.status)]}>
+                        <Text style={styles.statusText}>
+                          {getStatusLabel(proposal.status)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.proposalHouse}>{proposal.houseName}</Text>
+
+                    <View style={styles.inlineRow}>
+                      <Ionicons
+                        name="location-outline"
+                        size={14}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={styles.proposalMeta}>{proposal.address}</Text>
+                    </View>
+
+                    <View style={styles.proposalFooter}>
+                      <View style={styles.inlineRow}>
+                        <Ionicons
+                          name="time-outline"
+                          size={14}
+                          color={colors.textSecondary}
+                        />
+                        <Text style={styles.proposalMeta}>
+                          {formatDateTime(proposal.date)}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.proposalValue}>
+                        {formatCurrency(proposal.value)}
+                      </Text>
+                    </View>
+
+                    {isPending(proposal.status) ? (
+                      <View style={styles.actionRow}>
+                        <TouchableOpacity
+                          style={[styles.proposalActionButton, styles.acceptButton]}
+                          activeOpacity={0.85}
+                          disabled={isUpdating}
+                          onPress={() => handleProposalAction(proposal, 'ACEITA')}
+                        >
+                          {isUpdating ? (
+                            <ActivityIndicator size="small" color={colors.text} />
+                          ) : (
+                            <Text style={styles.proposalActionText}>Aceitar</Text>
+                          )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.proposalActionButton, styles.rejectButton]}
+                          activeOpacity={0.85}
+                          disabled={isUpdating}
+                          onPress={() => handleProposalAction(proposal, 'RECUSADA')}
+                        >
+                          <Text style={styles.proposalActionText}>Recusar</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons
+                name="file-search-outline"
+                size={46}
+                color={colors.textMuted}
+              />
+              <Text style={styles.emptyStateTitle}>Nenhuma proposta encontrada</Text>
+              <Text style={styles.emptyStateText}>
+                Quando uma casa enviar uma proposta, ela aparecera neste painel.
+              </Text>
             </View>
-          ))}
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -463,6 +536,17 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
   },
   topBar: {
     flexDirection: 'row',
@@ -493,6 +577,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: spacing.md,
     ...shadows.medium,
   },
   avatar: {
@@ -526,34 +611,28 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginLeft: 6,
+    flexShrink: 1,
   },
   inlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 4,
   },
-  quickActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-  },
-  actionButton: {
-    flex: 1,
-    height: 46,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.backgroundCard,
+  errorCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    marginBottom: spacing.md,
   },
-  actionButtonText: {
+  errorText: {
     ...typography.bodySmall,
     color: colors.text,
-    fontWeight: '600',
+    marginLeft: spacing.sm,
+    flex: 1,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -578,7 +657,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   statValue: {
-    fontSize: 28,
+    fontSize: 25,
     fontWeight: '700',
     marginBottom: 6,
   },
@@ -650,74 +729,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 8,
   },
-  balanceRow: {
-    marginBottom: spacing.md,
-  },
-  balanceTopRow: {
+  calendarGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
-  balanceMonth: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    fontWeight: '700',
-  },
-  balanceValue: {
-    ...typography.bodySmall,
-    color: '#19D38A',
-    fontWeight: '700',
-  },
-  balanceTrack: {
-    width: '100%',
-    height: 10,
-    backgroundColor: '#0F172A',
-    borderRadius: borderRadius.full,
-    overflow: 'hidden',
-  },
-  balanceBar: {
-    height: '100%',
-    backgroundColor: '#19D38A',
-    borderRadius: borderRadius.full,
-  },
-  chartArea: {
-    height: 220,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingTop: spacing.md,
-  },
-  chartColumn: {
-    width: '14%',
+  calendarDay: {
+    width: 62,
+    minHeight: 62,
+    borderRadius: borderRadius.md,
+    backgroundColor: '#101728',
+    borderWidth: 1,
+    borderColor: colors.primary,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  chartValue: {
+  calendarMonth: {
     ...typography.caption,
     color: colors.primary,
     fontWeight: '700',
-    marginBottom: 6,
-    minHeight: 16,
   },
-  chartTrack: {
-    width: '100%',
-    height: 150,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  chartBar: {
-    width: '80%',
-    backgroundColor: colors.primary,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    minHeight: 4,
-  },
-  chartLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 10,
+  calendarDate: {
+    fontSize: 22,
+    color: colors.text,
     fontWeight: '700',
   },
-  eventCard: {
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  proposalCard: {
     backgroundColor: '#101728',
     borderRadius: borderRadius.md,
     borderWidth: 1,
@@ -727,110 +768,88 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: spacing.sm,
   },
-  eventDateBox: {
-    width: 58,
-    minHeight: 58,
+  dateBox: {
+    width: 54,
+    minHeight: 54,
     borderRadius: borderRadius.md,
-    backgroundColor: 'rgba(0, 102, 255, 0.14)',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 102, 255, 0.12)',
     justifyContent: 'center',
+    alignItems: 'center',
     marginRight: spacing.md,
   },
-  eventDateText: {
+  dateMonth: {
     ...typography.caption,
     color: colors.primary,
     fontWeight: '700',
-    textAlign: 'center',
   },
-  eventInfo: {
+  dateDay: {
+    fontSize: 18,
+    color: colors.text,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  proposalContent: {
     flex: 1,
   },
-  eventTitle: {
+  proposalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  proposalTitle: {
     ...typography.body,
     color: colors.text,
     fontWeight: '700',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  proposalHouse: {
+    ...typography.bodySmall,
+    color: colors.primary,
+    fontWeight: '700',
     marginBottom: 4,
   },
-  eventMeta: {
-    ...typography.bodySmall,
+  proposalMeta: {
+    ...typography.caption,
     color: colors.textSecondary,
     marginLeft: 6,
+    flex: 1,
   },
-  eventFooter: {
+  proposalFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.sm,
   },
-  eventCache: {
+  proposalValue: {
     ...typography.bodySmall,
     color: '#19D38A',
     fontWeight: '700',
+    marginLeft: spacing.sm,
   },
-  venueCard: {
-    backgroundColor: '#101728',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+  actionRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
-  venueIcon: {
-    width: 46,
-    height: 46,
+  proposalActionButton: {
+    minHeight: 38,
     borderRadius: borderRadius.md,
-    backgroundColor: 'rgba(157, 78, 221, 0.14)',
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
   },
-  venueInfo: {
-    flex: 1,
+  acceptButton: {
+    backgroundColor: colors.success,
   },
-  venueName: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '700',
+  rejectButton: {
+    backgroundColor: colors.error,
   },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.14)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: borderRadius.full,
-    gap: 4,
-  },
-  ratingText: {
-    ...typography.caption,
-    color: '#F59E0B',
-    fontWeight: '700',
-  },
-  proposalCard: {
-    backgroundColor: '#101728',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  proposalInfo: {
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  proposalTitle: {
+  proposalActionText: {
     ...typography.bodySmall,
     color: colors.text,
     fontWeight: '700',
-    marginBottom: 4,
-  },
-  proposalValue: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
   },
   statusBadge: {
     paddingHorizontal: 10,
@@ -843,12 +862,30 @@ const styles = StyleSheet.create({
   statusPending: {
     backgroundColor: 'rgba(245, 158, 11, 0.14)',
   },
-  statusDefault: {
-    backgroundColor: 'rgba(160, 174, 192, 0.14)',
+  statusDanger: {
+    backgroundColor: 'rgba(239, 68, 68, 0.16)',
   },
   statusText: {
     ...typography.caption,
     color: colors.text,
     fontWeight: '700',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyStateTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+    marginTop: spacing.md,
+    marginBottom: 6,
+  },
+  emptyStateText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });

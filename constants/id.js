@@ -9,7 +9,10 @@ export async function initializeLoggedUserInfo() {
   try {
     const stored = await AsyncStorage.getItem(USER_SESSION_KEY);
 
-    if (!stored) return;
+    if (!stored) {
+      clearLoggedUserInfo();
+      return;
+    }
 
     const session = JSON.parse(stored);
     loggedUserId =
@@ -19,7 +22,8 @@ export async function initializeLoggedUserInfo() {
       
     loggedUserRole = session?.tipo || session?.role || null;
   } catch (error) {
-    console.warn('Falha ao inicializar ID de usu�rio:', error);
+    clearLoggedUserInfo();
+    console.warn('Falha ao inicializar ID de usuario:', error);
   }
 }
 

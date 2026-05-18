@@ -1,5 +1,7 @@
 expo-env.d.ts
 .env
+.expo/cache/
+.expo/types/
 
 logs
 *.log
