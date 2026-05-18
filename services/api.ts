@@ -67,7 +67,14 @@ function validateClientePayload(payload: ClienteCadastroPayload) {
   assertRequiredString(payload.telefone, 'telefone');
   assertRequiredString(payload.apelido, 'apelido');
   assertRequiredString(payload.preferencias, 'preferencias');
-  assertRequiredString(payload.data_nascimento, 'data_nascimento');
+
+  if (
+    payload.data_nascimento !== undefined &&
+    payload.data_nascimento !== null &&
+    String(payload.data_nascimento).trim() === ''
+  ) {
+    throw new Error('Campo obrigatorio invalido: data_nascimento.');
+  }
 }
 
 function validateArtistaPayload(payload: ArtistaCadastroPayload) {
@@ -155,6 +162,9 @@ export const usersService = {
   getArtist(id: UUID) {
     return usersApi.get<Artista>(`/artista/${id}`);
   },
+  updateArtist(id: UUID, payload: Partial<Artista>) {
+    return usersApi.put<Artista, Partial<Artista>>(`/artista/${id}`, payload);
+  },
   listCasasShow() {
     return usersApi.get<CasaDeShow[]>('/casaDeShow/');
   },
@@ -169,6 +179,9 @@ export const usersService = {
   },
   getCliente(id: UUID) {
     return usersApi.get<Cliente>(`/cliente/${id}`);
+  },
+  updateCliente(id: UUID, payload: Partial<Cliente>) {
+    return usersApi.put<Cliente, Partial<Cliente>>(`/cliente/${id}`, payload);
   },
 };
 
