@@ -1,5 +1,4 @@
-const API_BASE_URL = "https://night-out-api.onrender.com";
-const EVENTS_API_BASE_URL = "https://night-out-api-2.onrender.com";
+const API_BASE_URL = "https://night-out-api-usuarios.onrender.com";
 
 async function requestToBase(baseUrl, path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {

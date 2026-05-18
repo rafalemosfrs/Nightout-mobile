@@ -446,10 +446,14 @@ export default function ArtistDashboardScreen() {
             <Text style={styles.actionButtonText}>Agenda</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton} activeOpacity={0.85}>
-            <Ionicons name="document-text-outline" size={18} color={colors.text} />
-            <Text style={styles.actionButtonText}>Propostas</Text>
-          </TouchableOpacity>
+<TouchableOpacity
+  style={styles.actionButton}
+  activeOpacity={0.85}
+  onPress={() => router.push('/dashboards/artista-propostas')}
+>
+  <Ionicons name="document-text-outline" size={18} color={colors.text} />
+  <Text style={styles.actionButtonText}>Propostas</Text>
+</TouchableOpacity>
         </View>
 
         <View style={styles.statsGrid}>

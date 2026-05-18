@@ -167,6 +167,7 @@ export default function CasaShowEventosScreen() {
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
+  const [userId, setUserId] = useState(USER_ID_MOCK);
 
   useEffect(() => {
     async function loadPersistedEvents() {
@@ -192,6 +193,30 @@ export default function CasaShowEventosScreen() {
     }
 
     loadPersistedEvents();
+  }, []);
+
+  useEffect(() => {
+    async function loadSessionUserId() {
+      try {
+        const storedSession = await AsyncStorage.getItem('user_session');
+
+        if (!storedSession) return;
+
+        const parsedSession = JSON.parse(storedSession);
+        const sessionId =
+          parsedSession?.id || parsedSession?.id_usuario || USER_ID_MOCK;
+
+        setUserId(sessionId);
+        setForm((prevForm) => ({
+          ...prevForm,
+          id_usuario: sessionId,
+        }));
+      } catch (error) {
+        console.log('Erro ao carregar ID de sessão:', error);
+      }
+    }
+
+    loadSessionUserId();
   }, []);
 
   useEffect(() => {
@@ -358,7 +383,7 @@ export default function CasaShowEventosScreen() {
 
       const newEvent = normalizeEventItem({
         id_evento: `evt-${Date.now()}`,
-        id_usuario: form.id_usuario || USER_ID_MOCK,
+        id_usuario: form.id_usuario || userId,
         titulo: form.titulo.trim(),
         descricao: form.descricao.trim(),
         data_inicio: parsedStart,

@@ -86,7 +86,8 @@ export default function CasaShowPropostasScreen() {
       return matchesStatus && matchesSearch;
     });
   }, [search, selectedStatus]);
-
+ 
+  
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
