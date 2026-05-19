@@ -10,21 +10,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-
 import Button from '../../components/Button';
 import { useAuth } from '../../contexts/AuthContext';
 import { eventService, proposalService, usersService } from '../../services/api';
-
 import {
   formatCurrency,
   formatDateTime,
   getEventId,
   normalizeEvent,
 } from '../../utils/casaShowData';
-
 import {
   colors,
   spacing,
@@ -44,11 +40,7 @@ function getArtistName(artist) {
 export default function CasaShowPropostasScreen() {
   const { session } = useAuth();
   const params = useLocalSearchParams();
-
-  const initialEventId = params?.id_evento
-    ? String(params.id_evento)
-    : '';
-
+  const initialEventId = params?.id_evento ? String(params.id_evento) : '';
   const [events, setEvents] = useState([]);
   const [artists, setArtists] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(initialEventId);
@@ -65,28 +57,15 @@ export default function CasaShowPropostasScreen() {
 
     try {
       setError('');
-
       const [eventsResponse, artistsResponse] = await Promise.all([
         eventService.listByCasaShow(session.id),
         usersService.listArtists(),
       ]);
 
-      setEvents(
-        Array.isArray(eventsResponse)
-          ? eventsResponse.map(normalizeEvent)
-          : []
-      );
-
-      setArtists(
-        Array.isArray(artistsResponse)
-          ? artistsResponse
-          : []
-      );
+      setEvents(Array.isArray(eventsResponse) ? eventsResponse.map(normalizeEvent) : []);
+      setArtists(Array.isArray(artistsResponse) ? artistsResponse : []);
     } catch (requestError) {
-      setError(
-        requestError.message ||
-          'Nao foi possivel carregar os dados.'
-      );
+      setError(requestError.message || 'Nao foi possivel carregar dados para proposta.');
     } finally {
       setLoading(false);
     }
@@ -97,20 +76,12 @@ export default function CasaShowPropostasScreen() {
   }, [loadData]);
 
   const selectedEvent = useMemo(
-    () =>
-      events.find(
-        (eventItem) =>
-          getEventId(eventItem) === selectedEventId
-      ),
+    () => events.find((eventItem) => getEventId(eventItem) === selectedEventId),
     [events, selectedEventId]
   );
 
   const selectedArtist = useMemo(
-    () =>
-      artists.find(
-        (artist) =>
-          getArtistId(artist) === selectedArtistId
-      ),
+    () => artists.find((artist) => getArtistId(artist) === selectedArtistId),
     [artists, selectedArtistId]
   );
 
@@ -118,38 +89,34 @@ export default function CasaShowPropostasScreen() {
     setFormError('');
 
     if (!selectedEvent) {
-      setFormError('Selecione um evento.');
+      setFormError('Selecione o evento da proposta.');
       return;
     }
 
     if (!selectedArtist) {
-      setFormError('Selecione um artista.');
+      setFormError('Selecione o artista que recebera a proposta.');
       return;
     }
 
-    const numericValue = Number(
-      valorOfertado
-        .replace(/\./g, '')
-        .replace(',', '.')
-    );
+    const numericValue = Number(valorOfertado.replace(/\./g, '').replace(',', '.'));
 
-    if (
-      !numericValue ||
-      Number.isNaN(numericValue) ||
-      numericValue <= 0
-    ) {
-      setFormError('Informe um valor válido.');
+    if (!numericValue || Number.isNaN(numericValue) || numericValue <= 0) {
+      setFormError('Informe um valor ofertado valido.');
       return;
     }
 
     if (!termos.trim()) {
-      setFormError('Informe os termos.');
+      setFormError('Informe os termos da proposta.');
+      return;
+    }
+
+    if (!session?.id) {
+      setFormError('Sessao invalida. Faca login novamente para enviar propostas.');
       return;
     }
 
     try {
       setSubmitting(true);
-
       await proposalService.create({
         id_artista: getArtistId(selectedArtist),
         id_evento: getEventId(selectedEvent),
@@ -161,17 +128,10 @@ export default function CasaShowPropostasScreen() {
         termos: termos.trim(),
       });
 
-      Alert.alert(
-        'Sucesso',
-        'Proposta enviada com sucesso.'
-      );
-
+      Alert.alert('Sucesso', 'Proposta enviada com sucesso.');
       router.push('/dashboards/casashow');
     } catch (requestError) {
-      setFormError(
-        requestError.message ||
-          'Erro ao enviar proposta.'
-      );
+      setFormError(requestError.message || 'Nao foi possivel enviar a proposta.');
     } finally {
       setSubmitting(false);
     }
@@ -181,14 +141,8 @@ export default function CasaShowPropostasScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator
-            size="large"
-            color={colors.primary}
-          />
-
-          <Text style={styles.loadingText}>
-            Carregando dados...
-          </Text>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando dados...</Text>
         </View>
       </SafeAreaView>
     );
@@ -196,50 +150,32 @@ export default function CasaShowPropostasScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() =>
-              router.push('/dashboards/casashow')
-            }
+            onPress={() => router.push('/dashboards/casashow')}
           >
-            <Ionicons
-              name="chevron-back"
-              size={22}
-              color={colors.text}
-            />
+            <Ionicons name="chevron-back" size={22} color={colors.text} />
           </TouchableOpacity>
 
-          <Text style={styles.topBarTitle}>
-            Nova Proposta
-          </Text>
+          <Text style={styles.topBarTitle}>Nova Proposta</Text>
 
           <TouchableOpacity
             style={styles.iconButton}
             activeOpacity={0.8}
-            onPress={() =>
-              router.push('/profile-casa-show')
-            }
+            onPress={() => router.push('/profile-casa-show')}
           >
-            <Ionicons
-              name="person-outline"
-              size={20}
-              color={colors.text}
-            />
+            <Ionicons name="person-outline" size={20} color={colors.text} />
           </TouchableOpacity>
         </View>
 
         {error ? (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorText}>
-              {error}
-            </Text>
-          </View>
+          <TouchableOpacity style={styles.errorCard} activeOpacity={0.85} onPress={loadData}>
+            <Ionicons name="warning-outline" size={18} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+          </TouchableOpacity>
         ) : null}
 
         <View style={styles.heroCard}>
@@ -248,119 +184,123 @@ export default function CasaShowPropostasScreen() {
             size={30}
             color={colors.primary}
           />
-
           <View style={styles.heroInfo}>
-            <Text style={styles.heroTitle}>
-              Criar proposta
-            </Text>
-
+            <Text style={styles.heroTitle}>Criar proposta</Text>
             <Text style={styles.heroSubtitle}>
-              Selecione um evento e artista.
+              Selecione um evento, escolha um artista e envie os termos.
             </Text>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            Evento
-          </Text>
+          <Text style={styles.sectionTitle}>Evento</Text>
 
-          {events.map((eventItem) => {
-            const eventId = getEventId(eventItem);
+          {events.length > 0 ? (
+            events.map((eventItem) => {
+              const eventId = getEventId(eventItem);
+              const isSelected = selectedEventId === eventId;
 
-            const isSelected =
-              selectedEventId === eventId;
+              return (
+                <TouchableOpacity
+                  key={eventId}
+                  style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedEventId(eventId)}
+                >
+                  <View style={styles.optionInfo}>
+                    <Text style={styles.optionTitle}>{eventItem.titulo}</Text>
+                    <Text style={styles.optionSubtitle}>
+                      {formatDateTime(eventItem.data_inicio)}
+                    </Text>
+                  </View>
 
-            return (
-              <TouchableOpacity
-                key={eventId}
-                style={[
-                  styles.optionCard,
-                  isSelected &&
-                    styles.optionCardSelected,
-                ]}
-                onPress={() =>
-                  setSelectedEventId(eventId)
-                }
-              >
-                <View style={styles.optionInfo}>
-                  <Text style={styles.optionTitle}>
-                    {eventItem.titulo}
-                  </Text>
-
-                  <Text style={styles.optionSubtitle}>
-                    {formatDateTime(
-                      eventItem.data_inicio
-                    )}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                  {isSelected ? (
+                    <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <Text style={styles.emptyText}>Nenhum evento cadastrado para esta casa.</Text>
+          )}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            Artista
-          </Text>
+          <Text style={styles.sectionTitle}>Artista</Text>
 
-          {artists.map((artist) => {
-            const artistId = getArtistId(artist);
+          {artists.length > 0 ? (
+            artists.map((artist) => {
+              const artistId = getArtistId(artist);
+              const isSelected = selectedArtistId === artistId;
 
-            const isSelected =
-              selectedArtistId === artistId;
+              return (
+                <TouchableOpacity
+                  key={artistId}
+                  style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedArtistId(artistId)}
+                >
+                  <View style={styles.optionInfo}>
+                    <Text style={styles.optionTitle}>{getArtistName(artist)}</Text>
+                    <Text style={styles.optionSubtitle}>
+                      {artist.genero_musical || 'Genero nao informado'}
+                    </Text>
+                  </View>
 
-            return (
-              <TouchableOpacity
-                key={artistId}
-                style={[
-                  styles.optionCard,
-                  isSelected &&
-                    styles.optionCardSelected,
-                ]}
-                onPress={() =>
-                  setSelectedArtistId(artistId)
-                }
-              >
-                <View style={styles.optionInfo}>
-                  <Text style={styles.optionTitle}>
-                    {getArtistName(artist)}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                  {isSelected ? (
+                    <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <Text style={styles.emptyText}>Nenhum artista retornado pela API.</Text>
+          )}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.fieldLabel}>
-            Valor ofertado
-          </Text>
+          <Text style={styles.sectionTitle}>Detalhes da proposta</Text>
 
+          <Text style={styles.fieldLabel}>Valor ofertado</Text>
           <TextInput
             style={styles.input}
             placeholder="1500,00"
             placeholderTextColor={colors.textMuted}
+            keyboardType="numeric"
             value={valorOfertado}
-            onChangeText={setValorOfertado}
+            onChangeText={(value) => {
+              setValorOfertado(value);
+              setFormError('');
+            }}
           />
 
-          <Text style={styles.fieldLabel}>
-            Termos
-          </Text>
-
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            multiline
-            value={termos}
-            onChangeText={setTermos}
-          />
-
-          {formError ? (
-            <Text style={styles.formErrorText}>
-              {formError}
+          {valorOfertado ? (
+            <Text style={styles.helperText}>
+              {formatCurrency(Number(valorOfertado.replace(/\./g, '').replace(',', '.')))}
             </Text>
           ) : null}
+
+          <Text style={styles.fieldLabel}>Termos</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Cache, horario de chegada, duracao do show, estrutura..."
+            placeholderTextColor={colors.textMuted}
+            multiline
+            textAlignVertical="top"
+            value={termos}
+            onChangeText={(value) => {
+              setTermos(value);
+              setFormError('');
+            }}
+          />
+
+          {selectedEvent ? (
+            <Text style={styles.helperText}>
+              Data do evento: {formatDateTime(selectedEvent.data_inicio)}
+            </Text>
+          ) : null}
+
+          {formError ? <Text style={styles.formErrorText}>{formError}</Text> : null}
 
           <Button
             title="Enviar Proposta"
@@ -379,144 +319,166 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
   },
-
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: spacing.lg,
   },
-
   loadingText: {
-    color: colors.text,
+    ...typography.body,
+    color: colors.textSecondary,
     marginTop: spacing.md,
   },
-
   topBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: spacing.lg,
   },
-
   topBarTitle: {
+    ...typography.body,
     color: colors.text,
     fontWeight: '700',
   },
-
   iconButton: {
     width: 40,
     height: 40,
     borderRadius: borderRadius.full,
     backgroundColor: colors.backgroundCard,
+    borderWidth: 1,
+    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   errorCard: {
-    backgroundColor: 'rgba(255,0,0,0.1)',
-    padding: spacing.md,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
     borderRadius: borderRadius.md,
-    marginBottom: spacing.md,
-  },
-
-  errorText: {
-    color: colors.error,
-  },
-
-  heroCard: {
-    backgroundColor: colors.backgroundCard,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+    padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: spacing.md,
   },
-
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    marginLeft: spacing.sm,
+    flex: 1,
+  },
+  heroCard: {
+    backgroundColor: colors.backgroundCard,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    ...shadows.medium,
+  },
   heroInfo: {
+    flex: 1,
     marginLeft: spacing.md,
   },
-
   heroTitle: {
+    ...typography.h2,
     color: colors.text,
-    fontSize: 20,
-    fontWeight: '700',
+    marginBottom: 4,
   },
-
   heroSubtitle: {
+    ...typography.bodySmall,
     color: colors.textSecondary,
-    marginTop: 4,
   },
-
   card: {
     backgroundColor: colors.backgroundCard,
     borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md,
+    ...shadows.small,
   },
-
   sectionTitle: {
+    ...typography.body,
     color: colors.text,
     fontWeight: '700',
     marginBottom: spacing.md,
   },
-
   optionCard: {
-    backgroundColor: '#101728',
+    minHeight: 64,
     borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#101728',
     padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: spacing.sm,
   },
-
   optionCardSelected: {
-    borderWidth: 1,
     borderColor: colors.primary,
+    backgroundColor: 'rgba(0, 102, 255, 0.12)',
   },
-
   optionInfo: {
     flex: 1,
+    marginRight: spacing.sm,
   },
-
   optionTitle: {
+    ...typography.bodySmall,
     color: colors.text,
     fontWeight: '700',
+    marginBottom: 4,
   },
-
   optionSubtitle: {
+    ...typography.caption,
     color: colors.textSecondary,
-    marginTop: 4,
   },
-
   fieldLabel: {
+    ...typography.bodySmall,
     color: colors.text,
+    fontWeight: '600',
     marginBottom: 8,
     marginTop: spacing.sm,
   },
-
   input: {
     minHeight: 48,
     borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: '#1B2233',
     paddingHorizontal: 14,
     color: colors.text,
+    fontSize: 15,
     marginBottom: spacing.sm,
   },
-
   textArea: {
-    minHeight: 120,
+    minHeight: 110,
     paddingTop: 14,
   },
-
-  formErrorText: {
-    color: colors.error,
-    marginTop: spacing.sm,
+  helperText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
-
+  formErrorText: {
+    ...typography.bodySmall,
+    color: colors.error,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
   submitButton: {
     marginTop: spacing.md,
+  },
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
   },
 });
