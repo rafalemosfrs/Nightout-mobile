@@ -63,12 +63,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<UserSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const clearAuthState = useCallback(async () => {
-    setSession(null);
-    clearApiAuthToken();
-    clearLoggedUserInfo();
-    await clearStoredSession();
-  }, []);
+const clearAuthState = useCallback(() => {
+  setSession(null);
+  clearApiAuthToken();
+  clearLoggedUserInfo();
+
+  void clearStoredSession().catch((error) => {
+    console.log('Erro ao limpar sessão armazenada:', error);
+  });
+}, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -121,9 +124,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return nextSession;
   }, []);
 
-  const logout = useCallback(async () => {
-    await clearAuthState();
-  }, [clearAuthState]);
+const logout = useCallback(async () => {
+  clearAuthState();
+}, [clearAuthState]);
 
   const hasRole = useCallback(
     (roles: UsuarioTipo | UsuarioTipo[]) => {

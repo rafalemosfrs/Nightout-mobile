@@ -92,10 +92,17 @@ export default function CasaShowDashboardScreen() {
   const [error, setError] = useState('');
   const [selectedDay, setSelectedDay] = useState(new Date().getDate());
 
-  const loadDashboard = useCallback(async () => {
-    if (!session?.id) return;
+const loadDashboard = useCallback(async () => {
+  if (!session?.id) {
+    setCasa(null);
+    setEvents([]);
+    setProposals([]);
+    setLoading(false);
+    setRefreshing(false);
+    return;
+  }
 
-    try {
+  try {
       setError('');
 
       const [casaResult, eventsResult, proposalsResult] = await Promise.allSettled([

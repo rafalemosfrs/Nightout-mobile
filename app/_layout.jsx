@@ -10,12 +10,13 @@ function RootNavigator() {
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="register" options={{ headerShown: false }} />
-        <Stack.Screen name="dashboards" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+<Stack screenOptions={{ headerShown: false }}>
+  <Stack.Screen name="login" options={{ headerShown: false }} />
+  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+  <Stack.Screen name="register" options={{ headerShown: false }} />
+  <Stack.Screen name="dashboards" options={{ headerShown: false }} />
+  <Stack.Screen name="+not-found" />
+</Stack>
       <StatusBar style="light" />
     </>
   );

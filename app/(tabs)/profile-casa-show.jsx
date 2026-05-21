@@ -143,16 +143,23 @@ export default function ProfileCasaShowScreen() {
     }
   }
 
-  async function handleLogout() {
-    try {
-      setLoggingOut(true);
-      await logout();
-      setModalVisible(false);
-      router.replace('/');
-    } finally {
-      setLoggingOut(false);
-    }
+async function handleLogout() {
+  if (loggingOut) return;
+
+  try {
+    setLoggingOut(true);
+    setModalVisible(false);
+
+    await logout();
+
+    router.replace('/login');
+  } catch (error) {
+    console.log('Erro ao fazer logout:', error);
+    router.replace('/login');
+  } finally {
+    setLoggingOut(false);
   }
+}
 
   const casaName = form.nome_fantasia || casa?.nome_fantasia || 'Casa de Show';
 

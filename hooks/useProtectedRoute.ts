@@ -1,7 +1,11 @@
 import { useEffect } from 'react';
-import { router, useRootNavigationState, useSegments } from 'expo-router';
+import { router, useRootNavigationState, useSegments, type Href } from 'expo-router';
 import { getHomeRouteForUserType, useAuth } from '../contexts/AuthContext';
 import type { UsuarioTipo } from '../types/api';
+
+function replaceRoute(path: string) {
+  router.replace(path as Href);
+}
 
 const DASHBOARD_ROUTES_BY_TYPE: Record<UsuarioTipo, string[]> = {
   CLIENTE: ['cliente'],
@@ -23,7 +27,12 @@ const TAB_ROUTES_BY_TYPE: Record<UsuarioTipo, string[]> = {
 };
 
 function isPublicRoute(rootSegment?: string) {
-  return !rootSegment || rootSegment === 'register' || rootSegment === '+not-found';
+  return (
+    !rootSegment ||
+    rootSegment === 'login' ||
+    rootSegment === 'register' ||
+    rootSegment === '+not-found'
+  );
 }
 
 function isAllowedDashboard(tipo: UsuarioTipo, routeName?: string) {
@@ -48,24 +57,24 @@ export function useProtectedRoute() {
 
     if (!session) {
       if (!isPublicRoute(rootSegment)) {
-        router.replace('/');
+        replaceRoute('/login');
       }
 
       return;
     }
 
     if (isPublicRoute(rootSegment)) {
-      router.replace(getHomeRouteForUserType(session.tipo));
+      replaceRoute(getHomeRouteForUserType(session.tipo));
       return;
     }
 
     if (rootSegment === 'dashboards' && !isAllowedDashboard(session.tipo, routeName)) {
-      router.replace(getHomeRouteForUserType(session.tipo));
+      replaceRoute(getHomeRouteForUserType(session.tipo));
       return;
     }
 
     if (rootSegment === '(tabs)' && !isAllowedTab(session.tipo, routeName)) {
-      router.replace(getHomeRouteForUserType(session.tipo));
+      replaceRoute(getHomeRouteForUserType(session.tipo));
     }
   }, [isLoading, rootNavigationState?.key, segments, session]);
 }
