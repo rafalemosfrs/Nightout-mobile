@@ -223,7 +223,7 @@ export default function ClientDashboardScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Proximo evento</Text>
+          <Text style={styles.sectionTitle}>Proximos eventos</Text>
 
           {dashboard.mainEvent ? (
             <TouchableOpacity

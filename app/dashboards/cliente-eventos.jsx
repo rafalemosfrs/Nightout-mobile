@@ -28,6 +28,7 @@ import {
   typography,
 } from '../../constants/theme';
 
+
 const FALLBACK_EVENT_IMAGE =
   'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=80';
 
@@ -61,6 +62,9 @@ export default function PublicEventsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [activeBanner, setActiveBanner] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(null);
+const [showDatePicker, setShowDatePicker] = useState(false);
 
   const loadEvents = useCallback(async () => {
     try {
@@ -131,6 +135,7 @@ export default function PublicEventsScreen() {
   }
 
   return (
+    
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.content}
@@ -174,7 +179,70 @@ export default function PublicEventsScreen() {
               Lista carregada diretamente do microservico de eventos.
             </Text>
           </View>
-        </View>
+     </View>
+        <View style={styles.bannerContainer}>
+  <ScrollView
+    horizontal
+    pagingEnabled
+    showsHorizontalScrollIndicator={false}
+    onScroll={(event) => {
+      const slideSize = event.nativeEvent.layoutMeasurement.width;
+      const index = event.nativeEvent.contentOffset.x / slideSize;
+      const roundIndex = Math.round(index);
+
+      setActiveBanner(roundIndex);
+    }}
+    scrollEventThrottle={16}
+  >
+    {events.slice(0, 5).map((eventItem) => {
+      const eventId = getEventId(eventItem);
+
+      return (
+        <TouchableOpacity
+          key={`banner-${eventId}`}
+          activeOpacity={0.9}
+          style={styles.bannerCard}
+          onPress={() => setSelectedEventId(eventId)}
+        >
+          <Image
+            source={{
+              uri: eventItem.foto_evento || FALLBACK_EVENT_IMAGE,
+            }}
+            style={styles.bannerImage}
+          />
+
+          <View style={styles.bannerOverlay}>
+            <View style={styles.bannerBadge}>
+              <Text style={styles.bannerBadgeText}>
+                {getEventType(eventItem)}
+              </Text>
+            </View>
+
+            <Text style={styles.bannerTitle}>
+              {eventItem.titulo}
+            </Text>
+
+            <Text style={styles.bannerDate}>
+              {formatDateTime(eventItem.data_inicio)}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      );
+    })}
+  </ScrollView>
+
+  <View style={styles.pagination}>
+    {events.slice(0, 5).map((_, index) => (
+      <View
+        key={`dot-${index}`}
+        style={[
+          styles.paginationDot,
+          activeBanner === index && styles.paginationDotActive,
+        ]}
+      />
+    ))}
+  </View>
+</View>
 
         {error ? (
           <TouchableOpacity style={styles.errorCard} activeOpacity={0.85} onPress={loadEvents}>
@@ -196,13 +264,21 @@ export default function PublicEventsScreen() {
           </View>
 
           <View style={styles.filterRow}>
-            <TextInput
-              style={styles.filterInput}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.textMuted}
-              value={dateFilter}
-              onChangeText={setDateFilter}
-            />
+            <TouchableOpacity
+  style={styles.filterInput}
+  activeOpacity={0.8}
+  onPress={() => setShowDatePicker(true)}
+>
+  <Text
+    style={{
+      color: selectedDate ? colors.text : colors.textMuted,
+    }}
+  >
+    {selectedDate
+      ? selectedDate.toISOString().split('T')[0]
+      : 'Selecionar data'}
+  </Text>
+</TouchableOpacity>
 
             <TextInput
               style={styles.filterInput}
@@ -319,6 +395,7 @@ export default function PublicEventsScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
+    
   );
 }
 
@@ -445,6 +522,7 @@ const styles = StyleSheet.create({
   filterInput: {
     flex: 1,
     minHeight: 44,
+    maxWidth:150,
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -584,4 +662,76 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
+  bannerContainer: {
+  marginBottom: spacing.lg,
+},
+
+bannerCard: {
+  width: 340,
+  height: 200,
+  marginRight: spacing.md,
+  borderRadius: borderRadius.lg,
+  overflow: 'hidden',
+  backgroundColor: colors.backgroundCard,
+},
+
+bannerImage: {
+  width: '100%',
+  height: '100%',
+},
+
+bannerOverlay: {
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  right: 0,
+  padding: spacing.md,
+  backgroundColor: 'rgba(0,0,0,0.45)',
+},
+
+bannerBadge: {
+  alignSelf: 'flex-start',
+  backgroundColor: colors.primary,
+  borderRadius: borderRadius.full,
+  paddingHorizontal: 10,
+  paddingVertical: 4,
+  marginBottom: spacing.sm,
+},
+
+bannerBadgeText: {
+  color: '#fff',
+  fontSize: 12,
+  fontWeight: '700',
+},
+
+bannerTitle: {
+  color: '#fff',
+  fontSize: 18,
+  fontWeight: '700',
+  marginBottom: 4,
+},
+
+bannerDate: {
+  color: '#ddd',
+  fontSize: 13,
+},
+
+pagination: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  marginTop: spacing.sm,
+},
+
+paginationDot: {
+  width: 8,
+  height: 8,
+  borderRadius: 999,
+  backgroundColor: '#555',
+  marginHorizontal: 4,
+},
+
+paginationDotActive: {
+  width: 18,
+  backgroundColor: colors.primary,
+},
 });
