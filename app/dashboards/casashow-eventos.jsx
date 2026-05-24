@@ -147,7 +147,12 @@ function buildCreatedEvent(createdEvent, payload) {
   });
 }
 
-function DateTimePickerModal({ visible, value, title, onCancel, onConfirm }) {
+function InlineDateTimePicker({
+  value,
+  title,
+  onCancel,
+  onConfirm,
+}) {
   const initialDate = value || new Date();
   const [monthCursor, setMonthCursor] = useState(
     new Date(initialDate.getFullYear(), initialDate.getMonth(), 1)
@@ -155,18 +160,16 @@ function DateTimePickerModal({ visible, value, title, onCancel, onConfirm }) {
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [selectedHour, setSelectedHour] = useState(initialDate.getHours());
   const [selectedMinute, setSelectedMinute] = useState(
-    Math.round(initialDate.getMinutes() / 5) * 5
+    Math.min(Math.round(initialDate.getMinutes() / 5) * 5, 55)
   );
 
   useEffect(() => {
-    if (!visible) return;
-
     const nextInitialDate = value || new Date();
     setMonthCursor(new Date(nextInitialDate.getFullYear(), nextInitialDate.getMonth(), 1));
     setSelectedDate(nextInitialDate);
     setSelectedHour(nextInitialDate.getHours());
     setSelectedMinute(Math.min(Math.round(nextInitialDate.getMinutes() / 5) * 5, 55));
-  }, [value, visible]);
+  }, [value]);
 
   const calendarWeeks = useMemo(
     () => buildCalendarMatrix(monthCursor.getMonth(), monthCursor.getFullYear()),
@@ -186,131 +189,127 @@ function DateTimePickerModal({ visible, value, title, onCancel, onConfirm }) {
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.pickerOverlay}>
-        <View style={styles.pickerCard}>
-          <View style={styles.pickerHeader}>
-            <Text style={styles.pickerTitle}>{title}</Text>
-            <TouchableOpacity activeOpacity={0.85} onPress={onCancel}>
-              <Ionicons name="close" size={22} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
+    <View style={styles.inlinePickerWrapper}>
+      <View style={styles.pickerHeader}>
+        <Text style={styles.pickerTitle}>{title}</Text>
+        <TouchableOpacity activeOpacity={0.85} onPress={onCancel}>
+          <Ionicons name="close" size={22} color={colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
 
-          <View style={styles.monthNavigator}>
-            <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(-1)}>
-              <Ionicons name="chevron-back" size={18} color={colors.text} />
-            </TouchableOpacity>
+      <View style={styles.monthNavigator}>
+        <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(-1)}>
+          <Ionicons name="chevron-back" size={18} color={colors.text} />
+        </TouchableOpacity>
 
-            <Text style={styles.monthTitle}>
-              {MONTH_NAMES[monthCursor.getMonth()]} de {monthCursor.getFullYear()}
-            </Text>
+        <Text style={styles.monthTitle}>
+          {MONTH_NAMES[monthCursor.getMonth()]} de {monthCursor.getFullYear()}
+        </Text>
 
-            <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(1)}>
-              <Ionicons name="chevron-forward" size={18} color={colors.text} />
-            </TouchableOpacity>
-          </View>
+        <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(1)}>
+          <Ionicons name="chevron-forward" size={18} color={colors.text} />
+        </TouchableOpacity>
+      </View>
 
-          <View style={styles.weekHeader}>
-            {WEEK_DAYS.map((day, index) => (
-              <Text key={`${day}-${index}`} style={styles.weekLabel}>
-                {day}
-              </Text>
-            ))}
-          </View>
+      <View style={styles.weekHeader}>
+        {WEEK_DAYS.map((day, index) => (
+          <Text key={`${day}-${index}`} style={styles.weekLabel}>
+            {day}
+          </Text>
+        ))}
+      </View>
 
-          {calendarWeeks.map((week, weekIndex) => (
-            <View key={`week-${weekIndex}`} style={styles.weekRow}>
-              {week.map((day, dayIndex) => {
-                if (!day) {
-                  return <View key={`${weekIndex}-${dayIndex}`} style={styles.dayCellEmpty} />;
-                }
+      {calendarWeeks.map((week, weekIndex) => (
+        <View key={`week-${weekIndex}`} style={styles.weekRow}>
+          {week.map((day, dayIndex) => {
+            if (!day) {
+              return <View key={`${weekIndex}-${dayIndex}`} style={styles.dayCellEmpty} />;
+            }
 
-                const date = new Date(
-                  monthCursor.getFullYear(),
-                  monthCursor.getMonth(),
-                  day
-                );
-                const isSelected = sameDay(date, selectedDate);
+            const date = new Date(
+              monthCursor.getFullYear(),
+              monthCursor.getMonth(),
+              day
+            );
+            const isSelected = sameDay(date, selectedDate);
 
-                return (
-                  <TouchableOpacity
-                    key={`${weekIndex}-${dayIndex}`}
-                    style={[styles.dayCell, isSelected && styles.dayCellSelected]}
-                    activeOpacity={0.85}
-                    onPress={() => setSelectedDate(date)}
-                  >
-                    <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>
-                      {day}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
+            return (
+              <TouchableOpacity
+                key={`${weekIndex}-${dayIndex}`}
+                style={[styles.dayCell, isSelected && styles.dayCellSelected]}
+                activeOpacity={0.85}
+                onPress={() => setSelectedDate(date)}
+              >
+                <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>
+                  {day}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
 
-          <Text style={styles.timePickerLabel}>Horario</Text>
-          <View style={styles.timePickerRow}>
-            <ScrollView style={styles.timeColumn} showsVerticalScrollIndicator={false}>
-              {HOURS.map((hour) => {
-                const isSelected = selectedHour === hour;
+      <Text style={styles.timePickerLabel}>Horario</Text>
+      <View style={styles.timePickerRow}>
+        <ScrollView style={styles.timeColumn} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          {HOURS.map((hour) => {
+            const isSelected = selectedHour === hour;
 
-                return (
-                  <TouchableOpacity
-                    key={hour}
-                    style={[styles.timeOption, isSelected && styles.timeOptionSelected]}
-                    activeOpacity={0.85}
-                    onPress={() => setSelectedHour(hour)}
-                  >
-                    <Text
-                      style={[
-                        styles.timeOptionText,
-                        isSelected && styles.timeOptionTextSelected,
-                      ]}
-                    >
-                      {String(hour).padStart(2, '0')}h
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            return (
+              <TouchableOpacity
+                key={hour}
+                style={[styles.timeOption, isSelected && styles.timeOptionSelected]}
+                activeOpacity={0.85}
+                onPress={() => setSelectedHour(hour)}
+              >
+                <Text
+                  style={[
+                    styles.timeOptionText,
+                    isSelected && styles.timeOptionTextSelected,
+                  ]}
+                >
+                  {String(hour).padStart(2, '0')}h
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
-            <ScrollView style={styles.timeColumn} showsVerticalScrollIndicator={false}>
-              {MINUTES.map((minute) => {
-                const isSelected = selectedMinute === minute;
+        <ScrollView style={styles.timeColumn} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          {MINUTES.map((minute) => {
+            const isSelected = selectedMinute === minute;
 
-                return (
-                  <TouchableOpacity
-                    key={minute}
-                    style={[styles.timeOption, isSelected && styles.timeOptionSelected]}
-                    activeOpacity={0.85}
-                    onPress={() => setSelectedMinute(minute)}
-                  >
-                    <Text
-                      style={[
-                        styles.timeOptionText,
-                        isSelected && styles.timeOptionTextSelected,
-                      ]}
-                    >
-                      {String(minute).padStart(2, '0')}m
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+            return (
+              <TouchableOpacity
+                key={minute}
+                style={[styles.timeOption, isSelected && styles.timeOptionSelected]}
+                activeOpacity={0.85}
+                onPress={() => setSelectedMinute(minute)}
+              >
+                <Text
+                  style={[
+                    styles.timeOptionText,
+                    isSelected && styles.timeOptionTextSelected,
+                  ]}
+                >
+                  {String(minute).padStart(2, '0')}m
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-          <View style={styles.modalButtonsRow}>
-            <View style={styles.modalButtonWrapper}>
-              <Button title="Cancelar" variant="outline" onPress={onCancel} />
-            </View>
+      <View style={styles.modalButtonsRow}>
+        <View style={styles.modalButtonWrapper}>
+          <Button title="Cancelar" variant="outline" onPress={onCancel} />
+        </View>
 
-            <View style={styles.modalButtonWrapper}>
-              <Button title="Confirmar" onPress={handleConfirm} />
-            </View>
-          </View>
+        <View style={styles.modalButtonWrapper}>
+          <Button title="Confirmar" onPress={handleConfirm} />
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 
@@ -330,11 +329,16 @@ export default function CasaShowEventosScreen() {
   const [pickerTarget, setPickerTarget] = useState(null);
 
   const loadEvents = useCallback(async () => {
-    if (!session?.id) return;
+    const casaId = session?.id_usuario || session?.id;
+    if (!casaId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     try {
       setError('');
-      const response = await eventService.listByCasaShow(session.id);
+      const response = await eventService.listByCasaShow(casaId);
       setEvents(Array.isArray(response) ? response.map(normalizeEvent) : []);
     } catch (requestError) {
       setError(requestError.message || 'Nao foi possivel carregar os eventos.');
@@ -342,7 +346,7 @@ export default function CasaShowEventosScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session?.id]);
+  }, [session?.id_usuario, session?.id]);
 
   useEffect(() => {
     loadEvents();
@@ -397,6 +401,7 @@ export default function CasaShowEventosScreen() {
   function resetForm() {
     setForm(INITIAL_FORM);
     setFormError('');
+    setPickerTarget(null);
   }
 
   function openCreateModal() {
@@ -448,7 +453,8 @@ export default function CasaShowEventosScreen() {
       return;
     }
 
-    if (!session?.id) {
+    const casaId = session?.id_usuario || session?.id;
+    if (!casaId) {
       setFormError('Sessao invalida. Faca login novamente para criar eventos.');
       return;
     }
@@ -457,13 +463,13 @@ export default function CasaShowEventosScreen() {
       setIsSubmitting(true);
 
       const eventPayload = {
-        id_usuario: session.id,
+        id_usuario: casaId,
         titulo: form.titulo.trim(),
         descricao: form.descricao.trim(),
         data_inicio: form.data_inicio.toISOString(),
         data_fim: form.data_fim.toISOString(),
         local: form.local.trim(),
-        status: 'DISPONÍVEL',
+        status: 'DISPONIVEL',
       };
 
       const createdEvent = await eventService.create(eventPayload);
@@ -722,9 +728,8 @@ export default function CasaShowEventosScreen() {
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
+              nestedScrollEnabled
             >
-              {/* Upload de foto reservado para a proxima etapa da integracao. */}
-
               <Text style={styles.fieldLabel}>Titulo do Evento</Text>
               <TextInput
                 style={styles.input}
@@ -757,6 +762,18 @@ export default function CasaShowEventosScreen() {
                 <Ionicons name="calendar-outline" size={18} color={colors.primary} />
               </TouchableOpacity>
 
+              {pickerTarget === 'data_inicio' ? (
+                <InlineDateTimePicker
+                  value={pickerValue}
+                  title="Inicio do evento"
+                  onCancel={() => setPickerTarget(null)}
+                  onConfirm={(value) => {
+                    updateFormField('data_inicio', value);
+                    setPickerTarget(null);
+                  }}
+                />
+              ) : null}
+
               <Text style={styles.fieldLabel}>Data / Hora de Fim</Text>
               <TouchableOpacity
                 style={styles.pickerButton}
@@ -768,6 +785,18 @@ export default function CasaShowEventosScreen() {
                 </Text>
                 <Ionicons name="calendar-outline" size={18} color={colors.primary} />
               </TouchableOpacity>
+
+              {pickerTarget === 'data_fim' ? (
+                <InlineDateTimePicker
+                  value={pickerValue}
+                  title="Fim do evento"
+                  onCancel={() => setPickerTarget(null)}
+                  onConfirm={(value) => {
+                    updateFormField('data_fim', value);
+                    setPickerTarget(null);
+                  }}
+                />
+              ) : null}
 
               <Text style={styles.fieldLabel}>Local</Text>
               <TextInput
@@ -801,17 +830,6 @@ export default function CasaShowEventosScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-
-      <DateTimePickerModal
-        visible={!!pickerTarget}
-        value={pickerValue}
-        title={pickerTarget === 'data_inicio' ? 'Inicio do evento' : 'Fim do evento'}
-        onCancel={() => setPickerTarget(null)}
-        onConfirm={(value) => {
-          if (pickerTarget) updateFormField(pickerTarget, value);
-          setPickerTarget(null);
-        }}
-      />
     </SafeAreaView>
   );
 }
@@ -1203,20 +1221,13 @@ const styles = StyleSheet.create({
   modalButtonWrapper: {
     width: '48%',
   },
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  pickerCard: {
-    maxHeight: '92%',
-    backgroundColor: colors.background,
-    borderRadius: borderRadius.xl,
+  inlinePickerWrapper: {
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
-    ...shadows.large,
+    backgroundColor: '#101728',
+    padding: spacing.md,
+    marginBottom: spacing.sm,
   },
   pickerHeader: {
     flexDirection: 'row',
@@ -1270,7 +1281,7 @@ const styles = StyleSheet.create({
     width: '13.5%',
     aspectRatio: 1,
     borderRadius: borderRadius.md,
-    backgroundColor: '#101728',
+    backgroundColor: '#1B2233',
     borderWidth: 1,
     borderColor: '#1A2742',
     justifyContent: 'center',
@@ -1310,7 +1321,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: '#101728',
+    backgroundColor: '#1B2233',
   },
   timeOption: {
     height: 42,

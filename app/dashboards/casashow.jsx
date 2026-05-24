@@ -236,34 +236,35 @@ const loadDashboard = useCallback(async () => {
   }
 
   const summaryCards = [
-    {
-      title: 'Eventos da casa',
-      value: dashboard.resumo.eventosCasa,
-      subtitle: 'Total cadastrado',
-      icon: 'calendar-outline',
-      onPress: () => router.push('/dashboards/casashow-eventos-resumo'),
-    },
-    {
-      title: 'Proximos eventos',
-      value: dashboard.resumo.proximosEventos,
-      subtitle: 'Agenda futura',
-      icon: 'time-outline',
-    },
-    {
-      title: 'Propostas enviadas',
-      value: dashboard.resumo.propostasEnviadas,
-      subtitle: 'Aguardando retorno',
-      icon: 'paper-plane-outline',
-      onPress: () => router.push('/dashboards/casashow-propostas-enviadas'),
-    },
-    {
-      title: 'Propostas aceitas',
-      value: dashboard.resumo.propostasAceitas,
-      subtitle: 'Negociacoes fechadas',
-      icon: 'checkmark-circle-outline',
-      onPress: () => router.push('/dashboards/casashow-propostas-aceitas'),
-    },
-  ];
+  {
+    title: 'Eventos da casa',
+    value: dashboard.resumo.eventosCasa,
+    subtitle: 'Total cadastrado',
+    icon: 'calendar-outline',
+    onPress: () => router.push('/dashboards/casashow-eventos-resumo'),
+  },
+  {
+    title: 'Proximos eventos',
+    value: dashboard.resumo.proximosEventos,
+    subtitle: 'Agenda futura',
+    icon: 'time-outline',
+    onPress: () => router.push('/dashboards/casashow-eventos'),
+  },
+  {
+    title: 'Propostas enviadas',
+    value: dashboard.resumo.propostasEnviadas,
+    subtitle: 'Aguardando retorno',
+    icon: 'paper-plane-outline',
+    onPress: () => router.push('/dashboards/casashow-propostas-enviadas'),
+  },
+  {
+    title: 'Propostas aceitas',
+    value: dashboard.resumo.propostasAceitas,
+    subtitle: 'Negociacoes fechadas',
+    icon: 'checkmark-circle-outline',
+    onPress: () => router.push('/dashboards/casashow-propostas-aceitas'),
+  },
+];
 
   return (
     <SafeAreaView style={styles.container}>
