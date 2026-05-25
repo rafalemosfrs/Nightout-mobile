@@ -310,6 +310,26 @@ export default function ArtistDashboardScreen() {
           </View>
         </View>
 
+        <TouchableOpacity
+          style={styles.listCard}
+          activeOpacity={0.85}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          onPress={() => void router.push('/dashboards/artista/propostas')}
+        >
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons
+              name="playlist-music"
+              size={18}
+              color={colors.primary}
+            />
+            <Text style={styles.sectionTitle}>Propostas do artista</Text>
+          </View>
+          <Text style={styles.listCardText}>
+            Abra a lista completa de propostas do artista.
+          </Text>
+        </TouchableOpacity>
+
         {error ? (
           <TouchableOpacity
             style={styles.errorCard}
@@ -399,108 +419,6 @@ export default function ArtistDashboardScreen() {
           )}
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Propostas do artista</Text>
-          </View>
-
-          {sortedProposals.length > 0 ? (
-            sortedProposals.map((proposal) => {
-              const badge = formatDateBadge(proposal.date);
-              const isUpdating = updatingId === proposal.id;
-
-              return (
-                <View key={proposal.id || `${proposal.title}-${proposal.date}`} style={styles.proposalCard}>
-                  <View style={styles.dateBox}>
-                    <Text style={styles.dateMonth}>{badge.month}</Text>
-                    <Text style={styles.dateDay}>{badge.day}</Text>
-                  </View>
-
-                  <View style={styles.proposalContent}>
-                    <View style={styles.proposalHeader}>
-                      <Text style={styles.proposalTitle} numberOfLines={1}>
-                        {proposal.title}
-                      </Text>
-
-                      <View style={[styles.statusBadge, getStatusStyle(proposal.status)]}>
-                        <Text style={styles.statusText}>
-                          {getStatusLabel(proposal.status)}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.proposalHouse}>{proposal.houseName}</Text>
-
-                    <View style={styles.inlineRow}>
-                      <Ionicons
-                        name="location-outline"
-                        size={14}
-                        color={colors.textSecondary}
-                      />
-                      <Text style={styles.proposalMeta}>{proposal.address}</Text>
-                    </View>
-
-                    <View style={styles.proposalFooter}>
-                      <View style={styles.inlineRow}>
-                        <Ionicons
-                          name="time-outline"
-                          size={14}
-                          color={colors.textSecondary}
-                        />
-                        <Text style={styles.proposalMeta}>
-                          {formatDateTime(proposal.date)}
-                        </Text>
-                      </View>
-
-                      <Text style={styles.proposalValue}>
-                        {formatCurrency(proposal.value)}
-                      </Text>
-                    </View>
-
-                    {isPending(proposal.status) ? (
-                      <View style={styles.actionRow}>
-                        <TouchableOpacity
-                          style={[styles.proposalActionButton, styles.acceptButton]}
-                          activeOpacity={0.85}
-                          disabled={isUpdating}
-                          onPress={() => handleProposalAction(proposal, 'ACEITA')}
-                        >
-                          {isUpdating ? (
-                            <ActivityIndicator size="small" color={colors.text} />
-                          ) : (
-                            <Text style={styles.proposalActionText}>Aceitar</Text>
-                          )}
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.proposalActionButton, styles.rejectButton]}
-                          activeOpacity={0.85}
-                          disabled={isUpdating}
-                          onPress={() => handleProposalAction(proposal, 'RECUSADA')}
-                        >
-                          <Text style={styles.proposalActionText}>Recusar</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              );
-            })
-          ) : (
-            <View style={styles.emptyState}>
-              <MaterialCommunityIcons
-                name="file-search-outline"
-                size={46}
-                color={colors.textMuted}
-              />
-              <Text style={styles.emptyStateTitle}>Nenhuma proposta encontrada</Text>
-              <Text style={styles.emptyStateText}>
-                Quando uma casa enviar uma proposta, ela aparecera neste painel.
-              </Text>
-            </View>
-          )}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -695,6 +613,20 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.md,
     ...shadows.small,
+  },
+  listCard: {
+    backgroundColor: colors.backgroundCard,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.small,
+  },
+  listCardText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
   },
   sectionHeader: {
     flexDirection: 'row',
