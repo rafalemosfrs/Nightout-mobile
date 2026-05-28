@@ -6,6 +6,19 @@ import Input from '../../components/Input';
 import Button from '../../components/Button';
 import { registerClientRequest } from '../../services/api';
 
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizePhone(value) {
+  const digits = onlyDigits(value);
+
+  if (!digits) return value.trim();
+  if (digits.startsWith('55')) return `+${digits}`;
+
+  return `+55${digits}`;
+}
+
 export default function RegisterClientScreen() {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
@@ -112,7 +125,7 @@ export default function RegisterClientScreen() {
         nome: nome.trim(),
         email: email.trim().toLowerCase(),
         senha,
-        telefone: telefone.trim(),
+        telefone: normalizePhone(telefone),
         apelido: apelido.trim(),
         preferencias: preferencias.trim(),
       };
