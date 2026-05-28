@@ -156,7 +156,9 @@ export default function ArtistDashboardScreen() {
   const [updatingId, setUpdatingId] = useState(null);
 
   const loadProposals = useCallback(async () => {
-    if (!session?.id_usuario) {
+    const artistId = session?.id_usuario || session?.id;
+
+    if (!artistId) {
       setLoading(false);
       setRefreshing(false);
       return;
@@ -164,7 +166,7 @@ export default function ArtistDashboardScreen() {
 
     try {
       setError('');
-      const response = await proposalService.listByArtist(session.id_usuario);
+      const response = await proposalService.listByArtist(artistId);
       setProposals(Array.isArray(response) ? response.map(normalizeProposal) : []);
     } catch (requestError) {
       setError(requestError.message || 'Nao foi possivel carregar as propostas.');
@@ -172,7 +174,7 @@ export default function ArtistDashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session?.id_usuario]);
+  }, [session?.id_usuario, session?.id]);
 
   useEffect(() => {
     loadProposals();

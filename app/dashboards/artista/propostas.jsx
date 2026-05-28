@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ScrollView,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -9,34 +12,9 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useAuth } from '../../../contexts/AuthContext';
+import { proposalService } from '../../../services/api';
 import { colors, spacing, borderRadius, typography, shadows } from '../../../constants/theme';
-
-const mockProposals = [
-  {
-    id: '1',
-    data_proposta: '2026-05-19T14:30:00Z',
-    data_evento: '2026-06-15T20:00:00Z',
-    valor_ofertado: 5200,
-    status: 'PENDENTE',
-    termos: 'Apresentacao de 60 minutos com PA e backline basico.',
-  },
-  {
-    id: '2',
-    data_proposta: '2026-05-10T10:15:00Z',
-    data_evento: '2026-06-22T21:30:00Z',
-    valor_ofertado: 7600,
-    status: 'PENDENTE',
-    termos: 'Show com setlist intimista, 2 musicos de apoio e divulgação conjunta.',
-  },
-  {
-    id: '3',
-    data_proposta: '2026-05-12T09:00:00Z',
-    data_evento: '2026-07-02T19:00:00Z',
-    valor_ofertado: 4300,
-    status: 'PENDENTE',
-    termos: 'Show acustico de 45 minutos + meet & greet opcional.',
-  },
-];
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', {
@@ -54,7 +32,7 @@ function parseDate(value) {
 function formatDateTime(value) {
   const date = parseDate(value);
 
-  if (!date) return 'Data nao informada';
+  if (!date) return 'Data não informada';
 
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
@@ -98,14 +76,93 @@ function getStatusLabel(status) {
   return normalizeStatus(status);
 }
 
-export default function ArtistProposalsScreen() {
-  const [proposals, setProposals] = useState(mockProposals);
+function normalizeProposal(item) {
+  const event = item?.evento || {};
+  const house = item?.casaDeShow || item?.casa || event?.casaDeShow || {};
+  
+  return {
+    id: item?.id || item?.id_proposta || item?.id_proposta_casa || item?.uuid,
+    data_proposta: item?.data_proposta || item?.createdAt || null,
+    data_evento: item?.data_evento || event?.data_inicio || item?.data_inicio || null,
+    valor_ofertado: Number(item?.valor_ofertado || item?.valor || 0),
+    status: normalizeStatus(item?.status),
+    termos: item?.termos || '',
+    eventTitle: event?.titulo || item?.titulo || 'Apresentação Musical',
+    houseName: house?.nome_fantasia || house?.nome || item?.nome_casa || 'Casa de Show',
+    address: event?.local || house?.endereco || item?.local || 'Local não informado',
+  };
+}
 
-  function updateProposalStatus(id, status) {
-    setProposals((current) =>
-      current.map((proposal) =>
-        proposal.id === id ? { ...proposal, status } : proposal
-      )
+export default function ArtistProposalsScreen() {
+  const { session } = useAuth();
+  const [proposals, setProposals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [updatingId, setUpdatingId] = useState(null);
+
+  const loadProposals = useCallback(async () => {
+    const artistId = session?.id_usuario || session?.id;
+    if (!artistId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    try {
+      setError('');
+      const response = await proposalService.listByArtist(artistId);
+      setProposals(Array.isArray(response) ? response.map(normalizeProposal) : []);
+    } catch (requestError) {
+      setError(requestError.message || 'Não foi possível carregar as propostas.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [session?.id_usuario, session?.id]);
+
+  useEffect(() => {
+    loadProposals();
+  }, [loadProposals]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadProposals();
+  }
+
+  async function handleProposalAction(id, status) {
+    if (!id) {
+      Alert.alert('Erro', 'A proposta não possui ID para atualização.');
+      return;
+    }
+
+    try {
+      setUpdatingId(id);
+      await proposalService.update(id, { status });
+      setProposals((current) =>
+        current.map((item) =>
+          item.id === id ? { ...item, status: normalizeStatus(status) } : item
+        )
+      );
+      Alert.alert('Sucesso', `Proposta ${status === 'ACEITA' ? 'aceita' : 'recusada'} com sucesso.`);
+    } catch (requestError) {
+      Alert.alert(
+        'Erro',
+        requestError.message || 'Não foi possível atualizar o status da proposta.'
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando propostas...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -114,6 +171,13 @@ export default function ArtistProposalsScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
+        }
       >
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -143,64 +207,111 @@ export default function ArtistProposalsScreen() {
           </Text>
         </View>
 
-        {proposals.map((proposal) => (
-          <View key={proposal.id} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Proposta do artista</Text>
-              <View style={[styles.statusBadge, getStatusStyle(proposal.status)]}>
-                <Text style={styles.statusText}>{getStatusLabel(proposal.status)}</Text>
+        {error ? (
+          <TouchableOpacity
+            style={styles.errorCard}
+            activeOpacity={0.85}
+            onPress={loadProposals}
+          >
+            <Ionicons name="warning-outline" size={18} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {proposals.length > 0 ? (
+          proposals.map((proposal) => (
+            <View key={proposal.id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>{proposal.eventTitle}</Text>
+                <View style={[styles.statusBadge, getStatusStyle(proposal.status)]}>
+                  <Text style={styles.statusText}>{getStatusLabel(proposal.status)}</Text>
+                </View>
               </View>
-            </View>
 
-            <View style={styles.infoRow}>
-              <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-              <Text style={styles.infoText}>
-                Proposta: {formatDateTime(proposal.data_proposta)}
-              </Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-              <Text style={styles.infoText}>
-                Evento: {formatDateTime(proposal.data_evento)}
-              </Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Ionicons name="cash-outline" size={14} color={colors.textSecondary} />
-              <Text style={styles.infoText}>
-                Valor ofertado: {formatCurrency(proposal.valor_ofertado)}
-              </Text>
-            </View>
-
-            {proposal.termos ? (
-              <View style={styles.termsBox}>
-                <Text style={styles.termsLabel}>Termos</Text>
-                <Text style={styles.termsText}>{proposal.termos}</Text>
+              <View style={styles.infoRow}>
+                <MaterialCommunityIcons name="storefront-outline" size={14} color={colors.primary} />
+                <Text style={[styles.infoText, { fontWeight: '700', color: colors.primary }]}>
+                  {proposal.houseName}
+                </Text>
               </View>
-            ) : null}
 
-            {isPending(proposal.status) ? (
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.proposalActionButton, styles.acceptButton]}
-                  activeOpacity={0.85}
-                  onPress={() => updateProposalStatus(proposal.id, 'ACEITA')}
-                >
-                  <Text style={[styles.proposalActionText, styles.acceptButtonText]}>Aceitar</Text>
-                </TouchableOpacity>
+              {proposal.address ? (
+                <View style={styles.infoRow}>
+                  <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.infoText}>Local: {proposal.address}</Text>
+                </View>
+              ) : null}
 
-                <TouchableOpacity
-                  style={[styles.proposalActionButton, styles.rejectButton]}
-                  activeOpacity={0.85}
-                  onPress={() => updateProposalStatus(proposal.id, 'RECUSADA')}
-                >
-                  <Text style={[styles.proposalActionText, styles.rejectButtonText]}>Recusar</Text>
-                </TouchableOpacity>
+              {proposal.data_proposta ? (
+                <View style={styles.infoRow}>
+                  <Ionicons name="mail-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.infoText}>
+                    Enviada: {formatDateTime(proposal.data_proposta)}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={styles.infoRow}>
+                <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.infoText}>
+                  Evento: {formatDateTime(proposal.data_evento)}
+                </Text>
               </View>
-            ) : null}
+
+              <View style={styles.infoRow}>
+                <Ionicons name="cash-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.infoText}>
+                  Valor ofertado: {formatCurrency(proposal.valor_ofertado)}
+                </Text>
+              </View>
+
+              {proposal.termos ? (
+                <View style={styles.termsBox}>
+                  <Text style={styles.termsLabel}>Termos</Text>
+                  <Text style={styles.termsText}>{proposal.termos}</Text>
+                </View>
+              ) : null}
+
+              {isPending(proposal.status) ? (
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity
+                    style={[styles.proposalActionButton, styles.acceptButton]}
+                    activeOpacity={0.85}
+                    disabled={updatingId !== null}
+                    onPress={() => handleProposalAction(proposal.id, 'ACEITA')}
+                  >
+                    {updatingId === proposal.id ? (
+                      <ActivityIndicator size="small" color="#10B981" />
+                    ) : (
+                      <Text style={[styles.proposalActionText, styles.acceptButtonText]}>Aceitar</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.proposalActionButton, styles.rejectButton]}
+                    activeOpacity={0.85}
+                    disabled={updatingId !== null}
+                    onPress={() => handleProposalAction(proposal.id, 'RECUSADA')}
+                  >
+                    {updatingId === proposal.id ? (
+                      <ActivityIndicator size="small" color="#EF4444" />
+                    ) : (
+                      <Text style={[styles.proposalActionText, styles.rejectButtonText]}>Recusar</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <MaterialCommunityIcons name="file-document-outline" size={48} color={colors.textMuted} />
+            <Text style={styles.emptyStateTitle}>Nenhuma proposta recebida</Text>
+            <Text style={styles.emptyStateText}>
+              Assim que uma casa de show enviar uma proposta para você, ela aparecerá nesta listagem.
+            </Text>
           </View>
-        ))}
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -214,6 +325,17 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
   },
   topBar: {
     flexDirection: 'row',
@@ -265,6 +387,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.sm,
   },
+  errorCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    marginLeft: spacing.sm,
+    flex: 1,
+  },
   card: {
     backgroundColor: colors.backgroundCard,
     borderRadius: borderRadius.lg,
@@ -278,17 +416,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
   cardTitle: {
     ...typography.body,
     color: colors.text,
     fontWeight: '700',
+    flex: 1,
+    marginRight: spacing.sm,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
   infoText: {
     ...typography.bodySmall,
@@ -363,5 +503,23 @@ const styles = StyleSheet.create({
   },
   rejectButtonText: {
     color: '#EF4444',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyStateTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+    marginTop: spacing.md,
+    marginBottom: 6,
+  },
+  emptyStateText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });
