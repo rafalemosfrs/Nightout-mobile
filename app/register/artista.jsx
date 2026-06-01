@@ -6,6 +6,19 @@ import Input from '../../components/Input';
 import Button from '../../components/Button';
 import { registerArtistRequest } from '../../services/api';
 
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizePhone(value) {
+  const digits = onlyDigits(value);
+
+  if (!digits) return value.trim();
+  if (digits.startsWith('55')) return `+${digits}`;
+
+  return `+55${digits}`;
+}
+
 export default function RegisterArtistScreen() {
   const [nomeCompleto, setNomeCompleto] = useState('');
   const [email, setEmail] = useState('');
@@ -125,17 +138,19 @@ export default function RegisterArtistScreen() {
     try {
       setLoading(true);
 
-      const data = await registerArtistRequest({
+      const payload = {
         nome: nomeCompleto.trim(),
         email: email.trim().toLowerCase(),
         senha,
-        telefone: telefone.trim(),
+        telefone: normalizePhone(telefone),
         nome_artista: nomeArtistico.trim(),
         genero_musical: generoMusical.trim(),
-        cache_min: Number(cacheMinimo.replace(',', '.')),
+        cache_min: cacheMinimo.replace(',', '.').trim(),
         descricao: descricao.trim(),
         portifolio: preferencias.trim(),
-      });
+      };
+
+      const data = await registerArtistRequest(payload);
 
       Alert.alert('Sucesso', data.message || 'Artista cadastrado com sucesso!');
       router.replace('/');

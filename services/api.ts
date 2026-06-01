@@ -84,7 +84,7 @@ function validateArtistaPayload(payload: ArtistaCadastroPayload) {
   assertRequiredString(payload.telefone, 'telefone');
   assertRequiredString(payload.nome_artista, 'nome_artista');
   assertRequiredString(payload.genero_musical, 'genero_musical');
-  assertNumber(payload.cache_min, 'cache_min');
+  assertRequiredString(String(payload.cache_min), 'cache_min');
   assertRequiredString(payload.descricao, 'descricao');
   assertRequiredString(payload.portifolio, 'portifolio');
 }

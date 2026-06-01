@@ -6,6 +6,32 @@ import Input from '../../components/Input';
 import Button from '../../components/Button';
 import { registerClientRequest } from '../../services/api';
 
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizePhone(value) {
+  const digits = onlyDigits(value);
+
+  if (!digits) return value.trim();
+  if (digits.startsWith('55')) return `+${digits}`;
+
+  return `+55${digits}`;
+}
+
+function formatDateNascimento(value) {
+  const digits = onlyDigits(value).slice(0, 8);
+
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function convertBrazilianDateToIso(value) {
+  const [dia, mes, ano] = value.split('/');
+  return new Date(`${ano}-${mes}-${dia}T00:00:00.000Z`).toISOString();
+}
+
 export default function RegisterClientScreen() {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
@@ -46,10 +72,10 @@ export default function RegisterClientScreen() {
   };
 
   const validateDataNascimento = (valor) => {
-    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    const regex = /^\d{2}\/\d{2}\/\d{4}$/;
     if (!regex.test(valor.trim())) return false;
 
-    const [ano, mes, dia] = valor.split('-').map(Number);
+    const [dia, mes, ano] = valor.split('/').map(Number);
     const data = new Date(ano, mes - 1, dia);
 
     return (
@@ -93,8 +119,11 @@ export default function RegisterClientScreen() {
       hasError = true;
     }
 
-    if (dataNascimento.trim() && !validateDataNascimento(dataNascimento)) {
-      setDataNascimentoError('Use o formato YYYY-MM-DD.');
+    if (!dataNascimento.trim()) {
+      setDataNascimentoError('Informe a data de nascimento.');
+      hasError = true;
+    } else if (!validateDataNascimento(dataNascimento)) {
+      setDataNascimentoError('Use o formato DD/MM/AAAA.');
       hasError = true;
     }
 
@@ -112,14 +141,11 @@ export default function RegisterClientScreen() {
         nome: nome.trim(),
         email: email.trim().toLowerCase(),
         senha,
-        telefone: telefone.trim(),
+        telefone: normalizePhone(telefone),
         apelido: apelido.trim(),
         preferencias: preferencias.trim(),
+        data_nascimento: convertBrazilianDateToIso(dataNascimento.trim()),
       };
-
-      if (dataNascimento.trim()) {
-        payload.data_nascimento = dataNascimento.trim();
-      }
 
       const data = await registerClientRequest(payload);
 
@@ -230,10 +256,11 @@ export default function RegisterClientScreen() {
           <View>
             <Input
               label="Data de Nascimento"
-              placeholder="2006-03-31"
+              placeholder="dd/mm/aaaa"
+              keyboardType="numeric"
               value={dataNascimento}
               onChangeText={(text) => {
-                setDataNascimento(text);
+                setDataNascimento(formatDateNascimento(text));
                 setDataNascimentoError('');
                 setApiError('');
               }}
