@@ -29,6 +29,14 @@ import {
   shadows,
 } from '../../constants/theme';
 
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
 function getArtistId(artist) {
   return artist?.id_usuario || artist?.id || artist?.uuid;
 }
@@ -37,14 +45,46 @@ function getArtistName(artist) {
   return artist?.nome_artista || artist?.nome || artist?.email || 'Artista';
 }
 
+function getArtistSubtitle(artist) {
+  return artist?.genero_musical || artist?.genero || 'Genero nao informado';
+}
+
+function eventMatchesSearch(eventItem, search) {
+  const normalizedSearch = normalizeText(search);
+
+  if (!normalizedSearch) return true;
+
+  return (
+    normalizeText(eventItem?.titulo).includes(normalizedSearch) ||
+    normalizeText(eventItem?.descricao).includes(normalizedSearch) ||
+    normalizeText(eventItem?.local).includes(normalizedSearch) ||
+    normalizeText(eventItem?.genero).includes(normalizedSearch)
+  );
+}
+
+function artistMatchesSearch(artist, search) {
+  const normalizedSearch = normalizeText(search);
+
+  if (!normalizedSearch) return true;
+
+  return (
+    normalizeText(getArtistName(artist)).includes(normalizedSearch) ||
+    normalizeText(getArtistSubtitle(artist)).includes(normalizedSearch) ||
+    normalizeText(artist?.email).includes(normalizedSearch)
+  );
+}
+
 export default function CasaShowPropostasScreen() {
   const { session } = useAuth();
   const params = useLocalSearchParams();
   const initialEventId = params?.id_evento ? String(params.id_evento) : '';
+
   const [events, setEvents] = useState([]);
   const [artists, setArtists] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(initialEventId);
   const [selectedArtistId, setSelectedArtistId] = useState('');
+  const [eventSearch, setEventSearch] = useState('');
+  const [artistSearch, setArtistSearch] = useState('');
   const [valorOfertado, setValorOfertado] = useState('');
   const [termos, setTermos] = useState('');
   const [loading, setLoading] = useState(true);
@@ -52,24 +92,43 @@ export default function CasaShowPropostasScreen() {
   const [error, setError] = useState('');
   const [formError, setFormError] = useState('');
 
+  const casaShowId = useMemo(
+    () => session?.id_usuario || session?.id || '',
+    [session]
+  );
+
   const loadData = useCallback(async () => {
-    if (!session?.id) return;
+    if (!casaShowId) {
+      setError('Sessão inválida.');
+      setLoading(false);
+      return;
+    }
 
     try {
       setError('');
+
+      console.log('CASA SHOW ID PARA CRIAR PROPOSTA:', casaShowId);
+
       const [eventsResponse, artistsResponse] = await Promise.all([
-        eventService.listByCasaShow(session.id),
+        eventService.listByCasaShow(casaShowId),
         usersService.listArtists(),
       ]);
+
+      console.log('EVENTOS DA CASA PARA PROPOSTA:', JSON.stringify(eventsResponse, null, 2));
+      console.log('ARTISTAS PARA PROPOSTA:', JSON.stringify(artistsResponse, null, 2));
 
       setEvents(Array.isArray(eventsResponse) ? eventsResponse.map(normalizeEvent) : []);
       setArtists(Array.isArray(artistsResponse) ? artistsResponse : []);
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel carregar dados para proposta.');
+      console.log('ERRO AO CARREGAR DADOS PARA PROPOSTA:', requestError);
+
+      setError(requestError?.message || 'Nao foi possivel carregar dados para proposta.');
+      setEvents([]);
+      setArtists([]);
     } finally {
       setLoading(false);
     }
-  }, [session?.id]);
+  }, [casaShowId]);
 
   useEffect(() => {
     loadData();
@@ -84,6 +143,33 @@ export default function CasaShowPropostasScreen() {
     () => artists.find((artist) => getArtistId(artist) === selectedArtistId),
     [artists, selectedArtistId]
   );
+
+  const filteredEvents = useMemo(() => {
+    const sortedEvents = [...events].sort((a, b) => {
+      const dateA = new Date(a.data_inicio || 0).getTime() || 0;
+      const dateB = new Date(b.data_inicio || 0).getTime() || 0;
+
+      return dateA - dateB;
+    });
+
+    return sortedEvents.filter((eventItem) => eventMatchesSearch(eventItem, eventSearch));
+  }, [events, eventSearch]);
+
+  const filteredArtists = useMemo(() => {
+    return [...artists]
+      .sort((a, b) => getArtistName(a).localeCompare(getArtistName(b)))
+      .filter((artist) => artistMatchesSearch(artist, artistSearch));
+  }, [artists, artistSearch]);
+
+  function handleSelectEvent(eventId) {
+    setSelectedEventId(eventId);
+    setFormError('');
+  }
+
+  function handleSelectArtist(artistId) {
+    setSelectedArtistId(artistId);
+    setFormError('');
+  }
 
   async function handleCreateProposal() {
     setFormError('');
@@ -110,18 +196,19 @@ export default function CasaShowPropostasScreen() {
       return;
     }
 
-    if (!session?.id) {
+    if (!casaShowId) {
       setFormError('Sessao invalida. Faca login novamente para enviar propostas.');
       return;
     }
 
     try {
       setSubmitting(true);
+
       await proposalService.create({
         id_artista: getArtistId(selectedArtist),
         id_evento: getEventId(selectedEvent),
         data_proposta: new Date().toISOString(),
-        id_casa_show: session.id,
+        id_casa_show: casaShowId,
         data_evento: selectedEvent.data_inicio,
         valor_ofertado: numericValue.toFixed(2),
         status: 'DISPONÍVEL',
@@ -131,7 +218,7 @@ export default function CasaShowPropostasScreen() {
       Alert.alert('Sucesso', 'Proposta enviada com sucesso.');
       router.push('/dashboards/casashow');
     } catch (requestError) {
-      setFormError(requestError.message || 'Nao foi possivel enviar a proposta.');
+      setFormError(requestError?.message || 'Nao foi possivel enviar a proposta.');
     } finally {
       setSubmitting(false);
     }
@@ -150,7 +237,11 @@ export default function CasaShowPropostasScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.iconButton}
@@ -187,79 +278,229 @@ export default function CasaShowPropostasScreen() {
           <View style={styles.heroInfo}>
             <Text style={styles.heroTitle}>Criar proposta</Text>
             <Text style={styles.heroSubtitle}>
-              Selecione um evento, escolha um artista e envie os termos.
+              Pesquise o evento, escolha o artista e envie os termos da proposta.
             </Text>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Evento</Text>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Evento</Text>
+          </View>
+
+          {selectedEvent ? (
+            <View style={styles.selectedBox}>
+              <View style={styles.selectedInfo}>
+                <Text style={styles.selectedLabel}>Evento selecionado</Text>
+                <Text style={styles.selectedTitle}>{selectedEvent.titulo}</Text>
+                <Text style={styles.selectedSubtitle}>
+                  {formatDateTime(selectedEvent.data_inicio)}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.clearButton}
+                activeOpacity={0.85}
+                onPress={() => setSelectedEventId('')}
+              >
+                <Ionicons name="close-outline" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          <View style={styles.searchBox}>
+            <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Pesquisar evento por nome, local ou gênero"
+              placeholderTextColor={colors.textMuted}
+              value={eventSearch}
+              onChangeText={setEventSearch}
+            />
+            {eventSearch ? (
+              <TouchableOpacity activeOpacity={0.85} onPress={() => setEventSearch('')}>
+                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
 
           {events.length > 0 ? (
-            events.map((eventItem) => {
-              const eventId = getEventId(eventItem);
-              const isSelected = selectedEventId === eventId;
+            <>
+              <Text style={styles.resultCount}>
+                {filteredEvents.length} evento(s) encontrado(s)
+              </Text>
 
-              return (
-                <TouchableOpacity
-                  key={eventId}
-                  style={[styles.optionCard, isSelected && styles.optionCardSelected]}
-                  activeOpacity={0.85}
-                  onPress={() => setSelectedEventId(eventId)}
-                >
-                  <View style={styles.optionInfo}>
-                    <Text style={styles.optionTitle}>{eventItem.titulo}</Text>
-                    <Text style={styles.optionSubtitle}>
-                      {formatDateTime(eventItem.data_inicio)}
-                    </Text>
-                  </View>
+              <ScrollView
+                style={styles.searchResultsBox}
+                contentContainerStyle={styles.searchResultsContent}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+              >
+                {filteredEvents.length > 0 ? (
+                  filteredEvents.map((eventItem) => {
+                    const eventId = getEventId(eventItem);
+                    const isSelected = selectedEventId === eventId;
 
-                  {isSelected ? (
-                    <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-                  ) : null}
-                </TouchableOpacity>
-              );
-            })
+                    return (
+                      <TouchableOpacity
+                        key={eventId}
+                        style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                        activeOpacity={0.85}
+                        onPress={() => handleSelectEvent(eventId)}
+                      >
+                        <View style={styles.optionInfo}>
+                          <Text style={styles.optionTitle}>{eventItem.titulo}</Text>
+
+                          <View style={styles.optionMetaRow}>
+                            <Ionicons
+                              name="time-outline"
+                              size={13}
+                              color={colors.textSecondary}
+                            />
+                            <Text style={styles.optionSubtitle}>
+                              {formatDateTime(eventItem.data_inicio)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.optionMetaRow}>
+                            <Ionicons
+                              name="location-outline"
+                              size={13}
+                              color={colors.textSecondary}
+                            />
+                            <Text style={styles.optionSubtitle}>
+                              {eventItem.local || 'Local nao informado'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {isSelected ? (
+                          <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                        ) : (
+                          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
+                ) : (
+                  <Text style={styles.emptyText}>
+                    Nenhum evento encontrado com essa busca.
+                  </Text>
+                )}
+              </ScrollView>
+            </>
           ) : (
             <Text style={styles.emptyText}>Nenhum evento cadastrado para esta casa.</Text>
           )}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Artista</Text>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="person-circle-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Artista</Text>
+          </View>
+
+          {selectedArtist ? (
+            <View style={styles.selectedBox}>
+              <View style={styles.selectedInfo}>
+                <Text style={styles.selectedLabel}>Artista selecionado</Text>
+                <Text style={styles.selectedTitle}>{getArtistName(selectedArtist)}</Text>
+                <Text style={styles.selectedSubtitle}>{getArtistSubtitle(selectedArtist)}</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.clearButton}
+                activeOpacity={0.85}
+                onPress={() => setSelectedArtistId('')}
+              >
+                <Ionicons name="close-outline" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          <View style={styles.searchBox}>
+            <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Pesquisar artista por nome ou gênero"
+              placeholderTextColor={colors.textMuted}
+              value={artistSearch}
+              onChangeText={setArtistSearch}
+            />
+            {artistSearch ? (
+              <TouchableOpacity activeOpacity={0.85} onPress={() => setArtistSearch('')}>
+                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
 
           {artists.length > 0 ? (
-            artists.map((artist) => {
-              const artistId = getArtistId(artist);
-              const isSelected = selectedArtistId === artistId;
+            <>
+              <Text style={styles.resultCount}>
+                {filteredArtists.length} artista(s) encontrado(s)
+              </Text>
 
-              return (
-                <TouchableOpacity
-                  key={artistId}
-                  style={[styles.optionCard, isSelected && styles.optionCardSelected]}
-                  activeOpacity={0.85}
-                  onPress={() => setSelectedArtistId(artistId)}
-                >
-                  <View style={styles.optionInfo}>
-                    <Text style={styles.optionTitle}>{getArtistName(artist)}</Text>
-                    <Text style={styles.optionSubtitle}>
-                      {artist.genero_musical || 'Genero nao informado'}
-                    </Text>
-                  </View>
+              <ScrollView
+                style={styles.searchResultsBox}
+                contentContainerStyle={styles.searchResultsContent}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+              >
+                {filteredArtists.length > 0 ? (
+                  filteredArtists.map((artist) => {
+                    const artistId = getArtistId(artist);
+                    const isSelected = selectedArtistId === artistId;
 
-                  {isSelected ? (
-                    <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-                  ) : null}
-                </TouchableOpacity>
-              );
-            })
+                    return (
+                      <TouchableOpacity
+                        key={artistId}
+                        style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                        activeOpacity={0.85}
+                        onPress={() => handleSelectArtist(artistId)}
+                      >
+                        <View style={styles.optionInfo}>
+                          <Text style={styles.optionTitle}>{getArtistName(artist)}</Text>
+
+                          <View style={styles.optionMetaRow}>
+                            <Ionicons
+                              name="musical-notes-outline"
+                              size={13}
+                              color={colors.textSecondary}
+                            />
+                            <Text style={styles.optionSubtitle}>
+                              {getArtistSubtitle(artist)}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {isSelected ? (
+                          <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                        ) : (
+                          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
+                ) : (
+                  <Text style={styles.emptyText}>
+                    Nenhum artista encontrado com essa busca.
+                  </Text>
+                )}
+              </ScrollView>
+            </>
           ) : (
             <Text style={styles.emptyText}>Nenhum artista retornado pela API.</Text>
           )}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Detalhes da proposta</Text>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Detalhes da proposta</Text>
+          </View>
 
           <Text style={styles.fieldLabel}>Valor ofertado</Text>
           <TextInput
@@ -297,6 +538,12 @@ export default function CasaShowPropostasScreen() {
           {selectedEvent ? (
             <Text style={styles.helperText}>
               Data do evento: {formatDateTime(selectedEvent.data_inicio)}
+            </Text>
+          ) : null}
+
+          {selectedArtist ? (
+            <Text style={styles.helperText}>
+              Artista: {getArtistName(selectedArtist)}
             </Text>
           ) : null}
 
@@ -401,14 +648,88 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
     ...shadows.small,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
   },
   sectionTitle: {
     ...typography.body,
     color: colors.text,
     fontWeight: '700',
+    marginLeft: 8,
+  },
+  selectedBox: {
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 102, 255, 0.35)',
+    backgroundColor: 'rgba(0, 102, 255, 0.12)',
+    padding: spacing.md,
     marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectedInfo: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  selectedLabel: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  selectedTitle: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  selectedSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  clearButton: {
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchBox: {
+    minHeight: 48,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#101728',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 14,
+    marginLeft: spacing.sm,
+    paddingVertical: 10,
+  },
+  resultCount: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+  },
+  searchResultsBox: {
+    maxHeight: 260,
+    overflow: 'hidden',
+    marginBottom: spacing.sm,
+  },
+  searchResultsContent: {
+    paddingBottom: spacing.xs,
   },
   optionCard: {
     minHeight: 64,
@@ -436,9 +757,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 4,
   },
+  optionMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
   optionSubtitle: {
     ...typography.caption,
     color: colors.textSecondary,
+    marginLeft: 6,
+    flexShrink: 1,
   },
   fieldLabel: {
     ...typography.bodySmall,

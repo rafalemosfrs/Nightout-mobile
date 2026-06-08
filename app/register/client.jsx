@@ -1,10 +1,26 @@
 import React, { useState } from 'react';
-import { Alert, ScrollView, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  ScrollView,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
 import { registerClientRequest } from '../../services/api';
+
+const CLIENT_GENRES = [
+  { label: 'Forró', value: 'forro' },
+  { label: 'Trap', value: 'trap' },
+  { label: 'Funk', value: 'funk' },
+  { label: 'Sertanejo', value: 'sertanejo' },
+  { label: 'Outros', value: 'outros' },
+];
 
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -39,7 +55,7 @@ export default function RegisterClientScreen() {
   const [senha, setSenha] = useState('');
   const [apelido, setApelido] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');
-  const [preferencias, setPreferencias] = useState('');
+  const [selectedGenres, setSelectedGenres] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const [nomeError, setNomeError] = useState('');
@@ -85,6 +101,16 @@ export default function RegisterClientScreen() {
     );
   };
 
+  function toggleGenre(value) {
+    setSelectedGenres((current) =>
+      current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value]
+    );
+    setPreferenciasError('');
+    setApiError('');
+  }
+
   const handleRegister = async () => {
     clearFieldErrors();
     setApiError('');
@@ -127,8 +153,8 @@ export default function RegisterClientScreen() {
       hasError = true;
     }
 
-    if (!preferencias.trim()) {
-      setPreferenciasError('Informe suas preferências.');
+    if (selectedGenres.length === 0) {
+      setPreferenciasError('Selecione pelo menos um gênero.');
       hasError = true;
     }
 
@@ -143,7 +169,7 @@ export default function RegisterClientScreen() {
         senha,
         telefone: normalizePhone(telefone),
         apelido: apelido.trim(),
-        preferencias: preferencias.trim(),
+        preferencias: selectedGenres.join(';'),
         data_nascimento: convertBrazilianDateToIso(dataNascimento.trim()),
       };
 
@@ -271,16 +297,36 @@ export default function RegisterClientScreen() {
           </View>
 
           <View>
-            <Input
-              label="Preferências"
-              placeholder="Estilos musicais, tipos de eventos, etc."
-              value={preferencias}
-              onChangeText={(text) => {
-                setPreferencias(text);
-                setPreferenciasError('');
-                setApiError('');
-              }}
-            />
+            <Text style={styles.sectionLabel}>Preferências musicais</Text>
+
+            <View style={styles.checkboxGroup}>
+              {CLIENT_GENRES.map((genre) => {
+                const isSelected = selectedGenres.includes(genre.value);
+
+                return (
+                  <TouchableOpacity
+                    key={genre.value}
+                    style={styles.checkboxRow}
+                    activeOpacity={0.85}
+                    onPress={() => toggleGenre(genre.value)}
+                  >
+                    <View
+                      style={[
+                        styles.checkbox,
+                        isSelected && styles.checkboxSelected,
+                      ]}
+                    >
+                      {isSelected ? (
+                        <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                      ) : null}
+                    </View>
+
+                    <Text style={styles.checkboxLabel}>{genre.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {preferenciasError ? (
               <Text style={styles.fieldErrorText}>{preferenciasError}</Text>
             ) : null}
@@ -335,6 +381,38 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 18,
+  },
+  sectionLabel: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  checkboxGroup: {
+    gap: 10,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#4B5563',
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  checkboxSelected: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  checkboxLabel: {
+    color: '#E5E7EB',
+    fontSize: 14,
   },
   submitButton: {
     marginTop: 36,

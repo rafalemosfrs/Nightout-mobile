@@ -2,8 +2,25 @@ function asPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function isNonEmptyObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
+}
+
+function firstNonEmptyObject(...values) {
+  return values.find(isNonEmptyObject) || {};
+}
+
+function getFirstValue(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
+}
+
 function getRawEventId(evento) {
-  return evento?.id_evento || evento?.id || evento?.uuid;
+  return getFirstValue(
+    evento?.id_evento,
+    evento?.idEvento,
+    evento?.id,
+    evento?.uuid
+  );
 }
 
 function isEventLikeObject(value) {
@@ -21,6 +38,7 @@ function isEventLikeObject(value) {
 function unwrapEventPayload(evento = {}) {
   const source = asPlainObject(evento);
   const data = asPlainObject(source.data);
+
   const candidates = [
     source.evento,
     source.Evento,
@@ -43,12 +61,24 @@ export function getEventId(evento) {
 }
 
 export function getProposalId(proposta) {
-  return proposta?.id_proposta || proposta?.id || proposta?.uuid;
+  return getFirstValue(
+    proposta?.id_proposta,
+    proposta?.id_proposta_casa,
+    proposta?.idPropostaCasa,
+    proposta?.id_propostaCasa,
+    proposta?.idProposta,
+    proposta?.proposta_id,
+    proposta?.propostaCasa_id,
+    proposta?.id,
+    proposta?.uuid
+  );
 }
 
 export function parseApiDate(value) {
   if (!value) return null;
+
   const date = new Date(value);
+
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -98,6 +128,7 @@ export function formatCurrency(value) {
 
 export function isFutureOrToday(value) {
   const date = parseApiDate(value);
+
   if (!date) return false;
 
   const today = new Date();
@@ -107,7 +138,10 @@ export function isFutureOrToday(value) {
 }
 
 export function normalizeStatus(value) {
-  return String(value || 'PENDENTE').toUpperCase();
+  return String(value || 'PENDENTE')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
 }
 
 export function isAcceptedProposal(value) {
@@ -121,7 +155,7 @@ export function getCasaAddress(casa = {}) {
 }
 
 export function normalizeCasa(casa = {}, session = {}) {
-  const usuario = casa.usuario || {};
+  const usuario = asPlainObject(casa.usuario);
 
   return {
     ...casa,
@@ -140,20 +174,48 @@ export function normalizeCasa(casa = {}, session = {}) {
 export function normalizeEvent(evento = {}) {
   const fallback = asPlainObject(evento);
   const source = unwrapEventPayload(fallback);
-  const dataInicio = source.data_inicio || fallback.data_inicio || source.data_evento || fallback.data_evento || '';
+
+  const dataInicio =
+    source.data_inicio ||
+    fallback.data_inicio ||
+    source.data_evento ||
+    fallback.data_evento ||
+    '';
+
   const dataFim = source.data_fim || fallback.data_fim || '';
+
+  const genero =
+    source.genero ??
+    fallback.genero ??
+    source.genero_musical ??
+    fallback.genero_musical ??
+    '';
 
   return {
     ...fallback,
     ...source,
     id_evento: getRawEventId(source) || getRawEventId(fallback),
-    id_usuario: source.id_usuario || fallback.id_usuario || source.id_casa_show || fallback.id_casa_show || '',
+    id_usuario:
+      source.id_usuario ||
+      fallback.id_usuario ||
+      source.id_casa_show ||
+      fallback.id_casa_show ||
+      '',
     titulo: source.titulo || fallback.titulo || 'Evento sem titulo',
     descricao: source.descricao || fallback.descricao || '',
+    genero,
     data_inicio: dataInicio,
     data_fim: dataFim,
-    local: source.local || fallback.local || source.endereco || fallback.endereco || 'Local nao informado',
-    status: source.status || fallback.status || (isFutureOrToday(dataInicio) ? 'ATIVO' : 'FINALIZADO'),
+    local:
+      source.local ||
+      fallback.local ||
+      source.endereco ||
+      fallback.endereco ||
+      'Local nao informado',
+    status:
+      source.status ||
+      fallback.status ||
+      (isFutureOrToday(dataInicio) ? 'ATIVO' : 'FINALIZADO'),
     propostasCasa: Array.isArray(source.propostasCasa)
       ? source.propostasCasa
       : Array.isArray(fallback.propostasCasa)
@@ -168,28 +230,97 @@ export function normalizeEvent(evento = {}) {
 }
 
 export function normalizeProposal(proposta = {}) {
-  const evento = proposta.evento || proposta.Evento || {};
-  const artista = proposta.artista || proposta.Artista || {};
-  const casa = proposta.casaDeShow || proposta.casa || evento.casaDeShow || {};
-  const eventDate = proposta.data_evento || evento.data_inicio || proposta.data_inicio || '';
+  const source = asPlainObject(proposta);
+
+  const evento = firstNonEmptyObject(
+    source.evento,
+    source.Evento,
+    source.event,
+    source.Event
+  );
+
+  const artista = firstNonEmptyObject(
+    source.artista,
+    source.Artista
+  );
+
+  const casa = firstNonEmptyObject(
+    source.casaDeShow,
+    source.CasaDeShow,
+    source.casa,
+    evento.casaDeShow,
+    evento.CasaDeShow,
+    evento.casa
+  );
+
+  const usuarioCasa = asPlainObject(casa.usuario);
+  const usuarioArtista = asPlainObject(artista.usuario);
+
+  const eventDate =
+    source.data_evento ||
+    source.dataEvento ||
+    evento.data_inicio ||
+    evento.data_evento ||
+    source.data_inicio ||
+    '';
+
+  const genero =
+    evento.genero ??
+    source.genero ??
+    evento.genero_musical ??
+    source.genero_musical ??
+    '';
 
   return {
-    ...proposta,
-    id_proposta: getProposalId(proposta),
-    id_evento: proposta.id_evento || getEventId(evento),
-    id_artista: proposta.id_artista || artista.id_usuario || artista.id || '',
-    id_casa_show: proposta.id_casa_show || casa.id_usuario || casa.id || '',
+    ...source,
+    id_proposta: getProposalId(source),
+    id_evento: source.id_evento || source.idEvento || getEventId(evento),
+    id_artista:
+      source.id_artista ||
+      source.idArtista ||
+      artista.id_usuario ||
+      artista.id ||
+      '',
+    id_casa_show:
+      source.id_casa_show ||
+      source.idCasaShow ||
+      casa.id_usuario ||
+      casa.id ||
+      '',
+    id_usuario: source.id_usuario || source.idUsuario || casa.id_usuario || casa.id || '',
     artista_nome:
       artista.nome_artista ||
       artista.nome ||
-      proposta.nome_artista ||
-      proposta.artista_nome ||
+      usuarioArtista.nome ||
+      source.nome_artista ||
+      source.artista_nome ||
       'Artista',
-    evento_titulo: evento.titulo || proposta.titulo || 'Evento',
-    evento_local: evento.local || proposta.local || 'Local nao informado',
+    casa_nome:
+      casa.nome_fantasia ||
+      casa.nome ||
+      usuarioCasa.nome ||
+      source.casa_nome ||
+      source.nome_casa ||
+      source.casa_show_nome ||
+      'Casa de show',
+    evento_titulo:
+      evento.titulo ||
+      source.titulo ||
+      source.evento_titulo ||
+      source.nome_evento ||
+      'Evento',
+    evento_local:
+      evento.local ||
+      source.local ||
+      source.evento_local ||
+      source.local_evento ||
+      evento.endereco ||
+      'Local nao informado',
+    genero,
+    data_proposta: source.data_proposta || source.dataProposta || '',
     data_evento: eventDate,
-    valor_ofertado: Number(proposta.valor_ofertado || proposta.valor || 0),
-    status: normalizeStatus(proposta.status),
-    termos: proposta.termos || '',
+    valor_ofertado: Number(source.valor_ofertado || source.valorOfertado || source.valor || 0),
+    status: normalizeStatus(source.status),
+    termos: source.termos || '',
   };
 }

@@ -13,11 +13,13 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { eventService } from '../../services/api';
+import { eventService, proposalService, usersService } from '../../services/api';
 import {
   formatDateTime,
   getEventId,
+  isAcceptedProposal,
   normalizeEvent,
+  normalizeProposal,
   parseApiDate,
 } from '../../utils/casaShowData';
 import {
@@ -36,23 +38,203 @@ function getEventType(eventItem) {
     eventItem.tipo ||
     eventItem.categoria ||
     eventItem.genero_musical ||
+    eventItem.genero ||
     eventItem.status ||
     'Evento'
   );
 }
 
-function getArtistName(eventArtist) {
-  const artista = eventArtist?.artista || eventArtist?.Artista || eventArtist || {};
-  return artista.nome_artista || artista.nome || artista.email || 'Artista confirmado';
+function normalizeStatus(status) {
+  return String(status || 'PENDENTE')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
 }
 
 function isConfirmedArtist(eventArtist) {
-  const status = String(eventArtist?.status || 'CONFIRMADO').toUpperCase();
-  return ['ACEITA', 'ACEITO', 'CONFIRMADO', 'CONFIRMADA', 'APROVADO', 'APROVADA'].includes(status);
+  const status = normalizeStatus(eventArtist?.status || 'CONFIRMADO');
+
+  return ['ACEITA', 'ACEITO', 'CONFIRMADO', 'CONFIRMADA', 'APROVADO', 'APROVADA'].includes(
+    status
+  );
+}
+
+function getArtistNameFromObject(artistItem) {
+  const artista = artistItem?.artista || artistItem?.Artista || artistItem || {};
+  const usuario = artista?.usuario || {};
+
+  return (
+    artista.nome_artista ||
+    artista.nome ||
+    usuario.nome ||
+    artista.email ||
+    usuario.email ||
+    'Artista confirmado'
+  );
+}
+
+function getCasaNameFromObject(casaItem) {
+  const casa = casaItem?.casaDeShow || casaItem?.CasaDeShow || casaItem?.casa || casaItem || {};
+  const usuario = casa?.usuario || {};
+
+  return (
+    casa.nome_fantasia ||
+    casa.nome ||
+    usuario.nome ||
+    casa.email ||
+    usuario.email ||
+    'Casa de show'
+  );
+}
+
+function getProposalEventId(proposal) {
+  return (
+    proposal?.id_evento ||
+    proposal?.idEvento ||
+    proposal?.evento?.id_evento ||
+    proposal?.evento?.id ||
+    ''
+  );
+}
+
+function getProposalArtistId(proposal) {
+  return (
+    proposal?.id_artista ||
+    proposal?.idArtista ||
+    proposal?.artista?.id_usuario ||
+    proposal?.artista?.id ||
+    ''
+  );
+}
+
+function getProposalCasaId(proposal) {
+  return (
+    proposal?.id_casa_show ||
+    proposal?.idCasaShow ||
+    proposal?.casaDeShow?.id_usuario ||
+    proposal?.casaDeShow?.id ||
+    proposal?.casa?.id_usuario ||
+    proposal?.casa?.id ||
+    ''
+  );
+}
+
+function getEventCasaId(eventItem) {
+  return (
+    eventItem?.id_casa_show ||
+    eventItem?.idCasaShow ||
+    eventItem?.id_usuario ||
+    eventItem?.idUsuario ||
+    eventItem?.casaDeShow?.id_usuario ||
+    eventItem?.casaDeShow?.id ||
+    eventItem?.casa?.id_usuario ||
+    eventItem?.casa?.id ||
+    ''
+  );
+}
+
+function getArtistNameFromProposal(proposal) {
+  return (
+    proposal?.artista_nome ||
+    proposal?.nome_artista ||
+    proposal?.artista?.nome_artista ||
+    proposal?.artista?.nome ||
+    proposal?.artista?.usuario?.nome ||
+    proposal?.Artista?.nome_artista ||
+    proposal?.Artista?.nome ||
+    proposal?.Artista?.usuario?.nome ||
+    ''
+  );
+}
+
+function getCasaNameFromProposal(proposal) {
+  return (
+    proposal?.casa_nome ||
+    proposal?.nome_casa ||
+    proposal?.casa_show_nome ||
+    proposal?.casaDeShow?.nome_fantasia ||
+    proposal?.casaDeShow?.nome ||
+    proposal?.casaDeShow?.usuario?.nome ||
+    proposal?.casa?.nome_fantasia ||
+    proposal?.casa?.nome ||
+    proposal?.casa?.usuario?.nome ||
+    ''
+  );
+}
+
+async function enrichAcceptedProposal(proposal) {
+  const normalizedProposal = normalizeProposal(proposal);
+  const artistId = getProposalArtistId(normalizedProposal);
+  const casaId = getProposalCasaId(normalizedProposal);
+
+  const [artistResult, casaResult] = await Promise.allSettled([
+    artistId ? usersService.getArtist(artistId) : Promise.resolve(null),
+    casaId ? usersService.getCasaShow(casaId) : Promise.resolve(null),
+  ]);
+
+  const artista =
+    artistResult.status === 'fulfilled' && artistResult.value
+      ? artistResult.value
+      : null;
+
+  const casa =
+    casaResult.status === 'fulfilled' && casaResult.value
+      ? casaResult.value
+      : null;
+
+  return {
+    ...normalizedProposal,
+    artista,
+    casaDeShow: casa,
+    artista_nome:
+      getArtistNameFromObject(artista) ||
+      getArtistNameFromProposal(normalizedProposal) ||
+      'Artista confirmado',
+    casa_nome:
+      getCasaNameFromObject(casa) ||
+      getCasaNameFromProposal(normalizedProposal) ||
+      'Casa de show',
+  };
+}
+
+async function enrichEventWithCasa(eventItem, proposalsForEvent = []) {
+  const normalizedEvent = normalizeEvent(eventItem);
+
+  const eventCasaId = getEventCasaId(normalizedEvent);
+  const proposalCasaId = proposalsForEvent.length > 0 ? getProposalCasaId(proposalsForEvent[0]) : '';
+  const casaId = eventCasaId || proposalCasaId;
+
+  if (!casaId) {
+    return {
+      ...normalizedEvent,
+      casa_nome: 'Casa de show',
+    };
+  }
+
+  try {
+    const casa = await usersService.getCasaShow(casaId);
+
+    return {
+      ...normalizedEvent,
+      casaDeShow: casa,
+      casa_nome: getCasaNameFromObject(casa),
+    };
+  } catch (requestError) {
+    console.log('ERRO AO BUSCAR CASA DO EVENTO:', requestError);
+
+    return {
+      ...normalizedEvent,
+      casa_nome:
+        getCasaNameFromProposal(proposalsForEvent[0]) ||
+        getCasaNameFromObject(normalizedEvent?.casaDeShow) ||
+        'Casa de show',
+    };
+  }
 }
 
 export default function PublicEventsScreen() {
   const [events, setEvents] = useState([]);
+  const [acceptedProposals, setAcceptedProposals] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -65,10 +247,80 @@ export default function PublicEventsScreen() {
   const loadEvents = useCallback(async () => {
     try {
       setError('');
-      const response = await eventService.list({ page: 1, pageSize: 50 });
-      setEvents(Array.isArray(response) ? response.map(normalizeEvent) : []);
+
+      const [eventsResult, proposalsResult] = await Promise.allSettled([
+        eventService.list({ page: 1, pageSize: 50 }),
+        proposalService.list(),
+      ]);
+
+      let enrichedAcceptedProposals = [];
+
+      if (proposalsResult.status === 'fulfilled') {
+        console.log('PROPOSTAS PUBLICAS - API:', JSON.stringify(proposalsResult.value, null, 2));
+
+        const proposalList = Array.isArray(proposalsResult.value)
+          ? proposalsResult.value
+          : [];
+
+        const onlyAccepted = proposalList
+          .map(normalizeProposal)
+          .filter((proposal) => isAcceptedProposal(proposal.status));
+
+        enrichedAcceptedProposals = await Promise.all(
+          onlyAccepted.map((proposal) => enrichAcceptedProposal(proposal))
+        );
+
+        console.log(
+          'PROPOSTAS ACEITAS COM ARTISTAS E CASAS:',
+          JSON.stringify(enrichedAcceptedProposals, null, 2)
+        );
+
+        setAcceptedProposals(enrichedAcceptedProposals);
+      } else {
+        console.log('ERRO AO BUSCAR PROPOSTAS PUBLICAS:', proposalsResult.reason);
+        setAcceptedProposals([]);
+      }
+
+      if (eventsResult.status === 'fulfilled') {
+        console.log('EVENTOS PUBLICOS - API:', JSON.stringify(eventsResult.value, null, 2));
+
+        const eventList = Array.isArray(eventsResult.value)
+          ? eventsResult.value
+          : [];
+
+        const enrichedEvents = await Promise.all(
+          eventList.map((eventItem) => {
+            const normalizedEvent = normalizeEvent(eventItem);
+            const eventId = getEventId(normalizedEvent);
+
+            const proposalsForEvent = enrichedAcceptedProposals.filter(
+              (proposal) => getProposalEventId(proposal) === eventId
+            );
+
+            return enrichEventWithCasa(normalizedEvent, proposalsForEvent);
+          })
+        );
+
+        console.log(
+          'EVENTOS PUBLICOS - ENRIQUECIDOS COM CASA:',
+          JSON.stringify(enrichedEvents, null, 2)
+        );
+
+        setEvents(enrichedEvents);
+      } else {
+        console.log('ERRO AO BUSCAR EVENTOS PUBLICOS:', eventsResult.reason);
+        setEvents([]);
+      }
+
+      if (eventsResult.status === 'rejected' || proposalsResult.status === 'rejected') {
+        setError('Alguns dados nao puderam ser carregados. Puxe para atualizar.');
+      }
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel carregar os eventos.');
+      console.log('ERRO AO CARREGAR EVENTOS PUBLICOS:', requestError);
+
+      setError(requestError?.message || 'Nao foi possivel carregar os eventos.');
+      setEvents([]);
+      setAcceptedProposals([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -78,6 +330,19 @@ export default function PublicEventsScreen() {
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
+
+  const proposalsByEventId = useMemo(() => {
+    return acceptedProposals.reduce((acc, proposal) => {
+      const eventId = getProposalEventId(proposal);
+
+      if (!eventId) return acc;
+
+      acc[eventId] = acc[eventId] || [];
+      acc[eventId].push(proposal);
+
+      return acc;
+    }, {});
+  }, [acceptedProposals]);
 
   const eventTypes = useMemo(() => {
     const values = events.map(getEventType).filter(Boolean);
@@ -94,15 +359,20 @@ export default function PublicEventsScreen() {
         const formattedDate = eventDate ? eventDate.toISOString().slice(0, 10) : '';
         const eventType = getEventType(eventItem);
 
+        const title = String(eventItem.titulo || '').toLowerCase();
+        const description = String(eventItem.descricao || '').toLowerCase();
+        const local = String(eventItem.local || '').toLowerCase();
+        const casaNome = String(eventItem.casa_nome || '').toLowerCase();
+
         const matchesSearch =
           !normalizedSearch ||
-          eventItem.titulo.toLowerCase().includes(normalizedSearch) ||
-          eventItem.descricao.toLowerCase().includes(normalizedSearch) ||
-          eventItem.local.toLowerCase().includes(normalizedSearch);
+          title.includes(normalizedSearch) ||
+          description.includes(normalizedSearch) ||
+          local.includes(normalizedSearch) ||
+          casaNome.includes(normalizedSearch);
 
         const matchesDate = !dateFilter.trim() || formattedDate === dateFilter.trim();
-        const matchesLocation =
-          !normalizedLocation || eventItem.local.toLowerCase().includes(normalizedLocation);
+        const matchesLocation = !normalizedLocation || local.includes(normalizedLocation);
         const matchesType = typeFilter === 'TODOS' || eventType === typeFilter;
 
         return matchesSearch && matchesDate && matchesLocation && matchesType;
@@ -165,13 +435,17 @@ export default function PublicEventsScreen() {
 
         <View style={styles.heroCard}>
           <View style={styles.heroIcon}>
-            <MaterialCommunityIcons name="ticket-confirmation-outline" size={28} color={colors.primary} />
+            <MaterialCommunityIcons
+              name="ticket-confirmation-outline"
+              size={28}
+              color={colors.primary}
+            />
           </View>
 
           <View style={styles.heroInfo}>
             <Text style={styles.heroTitle}>Eventos disponiveis</Text>
             <Text style={styles.heroSubtitle}>
-              Lista carregada diretamente do microservico de eventos.
+              Veja eventos, casas de show e artistas confirmados.
             </Text>
           </View>
         </View>
@@ -188,7 +462,7 @@ export default function PublicEventsScreen() {
             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Buscar por nome, descricao ou local"
+              placeholder="Buscar por nome, descricao, casa ou local"
               placeholderTextColor={colors.textMuted}
               value={search}
               onChangeText={setSearch}
@@ -242,9 +516,17 @@ export default function PublicEventsScreen() {
             filteredEvents.map((eventItem) => {
               const eventId = getEventId(eventItem);
               const isSelected = selectedEventId === eventId;
-              const confirmedArtists = Array.isArray(eventItem.eventoArtistas)
+
+              const confirmedArtistsFromEvent = Array.isArray(eventItem.eventoArtistas)
                 ? eventItem.eventoArtistas.filter(isConfirmedArtist)
                 : [];
+
+              const confirmedArtistsFromProposals = proposalsByEventId[eventId] || [];
+
+              const confirmedArtists =
+                confirmedArtistsFromProposals.length > 0
+                  ? confirmedArtistsFromProposals
+                  : confirmedArtistsFromEvent;
 
               return (
                 <TouchableOpacity
@@ -269,6 +551,13 @@ export default function PublicEventsScreen() {
                       </View>
                     </View>
 
+                    <View style={styles.casaPreviewRow}>
+                      <Ionicons name="business-outline" size={14} color={colors.primary} />
+                      <Text style={styles.casaPreviewText} numberOfLines={1}>
+                        {eventItem.casa_nome || 'Casa de show'}
+                      </Text>
+                    </View>
+
                     <View style={styles.metaRow}>
                       <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
                       <Text style={styles.metaText}>{formatDateTime(eventItem.data_inicio)}</Text>
@@ -287,15 +576,33 @@ export default function PublicEventsScreen() {
 
                     {isSelected ? (
                       <View style={styles.artistBox}>
-                        <Text style={styles.artistBoxTitle}>Artistas confirmados</Text>
+                        <View style={styles.artistBoxHeader}>
+                          <Ionicons
+                            name="people-circle-outline"
+                            size={17}
+                            color={colors.primary}
+                          />
+                          <Text style={styles.artistBoxTitle}>Artistas confirmados</Text>
+                        </View>
 
                         {confirmedArtists.length > 0 ? (
-                          confirmedArtists.map((artistItem, index) => (
-                            <View key={`${eventId}-artist-${index}`} style={styles.artistRow}>
-                              <Ionicons name="musical-notes-outline" size={14} color={colors.primary} />
-                              <Text style={styles.artistName}>{getArtistName(artistItem)}</Text>
-                            </View>
-                          ))
+                          confirmedArtists.map((artistItem, index) => {
+                            const artistName =
+                              artistItem?.artista_nome ||
+                              getArtistNameFromProposal(artistItem) ||
+                              getArtistNameFromObject(artistItem?.artista || artistItem);
+
+                            return (
+                              <View key={`${eventId}-artist-${index}`} style={styles.artistRow}>
+                                <Ionicons
+                                  name="musical-notes-outline"
+                                  size={14}
+                                  color={colors.primary}
+                                />
+                                <Text style={styles.artistName}>{artistName}</Text>
+                              </View>
+                            );
+                          })
                         ) : (
                           <Text style={styles.emptyText}>
                             Nenhum artista confirmado retornado pela API.
@@ -520,6 +827,24 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
   },
+  casaPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    backgroundColor: 'rgba(0, 102, 255, 0.08)',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 102, 255, 0.16)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+  },
+  casaPreviewText: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '700',
+    marginLeft: 6,
+    flex: 1,
+  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -542,11 +867,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingTop: spacing.md,
   },
+  artistBoxHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
   artistBoxTitle: {
     ...typography.bodySmall,
     color: colors.text,
     fontWeight: '700',
-    marginBottom: spacing.sm,
+    marginLeft: 6,
   },
   artistRow: {
     flexDirection: 'row',

@@ -36,12 +36,6 @@ function assertEmail(value: unknown) {
   }
 }
 
-function assertNumber(value: unknown, field: string) {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    throw new Error(`Campo numerico invalido: ${field}.`);
-  }
-}
-
 function assertNumericValue(value: unknown, field: string) {
   const numericValue = typeof value === 'string' ? Number(value) : value;
 
@@ -67,14 +61,7 @@ function validateClientePayload(payload: ClienteCadastroPayload) {
   assertRequiredString(payload.telefone, 'telefone');
   assertRequiredString(payload.apelido, 'apelido');
   assertRequiredString(payload.preferencias, 'preferencias');
-
-  if (
-    payload.data_nascimento !== undefined &&
-    payload.data_nascimento !== null &&
-    String(payload.data_nascimento).trim() === ''
-  ) {
-    throw new Error('Campo obrigatorio invalido: data_nascimento.');
-  }
+  assertRequiredString(String(payload.data_nascimento), 'data_nascimento');
 }
 
 function validateArtistaPayload(payload: ArtistaCadastroPayload) {
@@ -107,6 +94,7 @@ function validateEventoPayload(payload: EventoDTO) {
   assertRequiredString(payload.id_usuario, 'id_usuario');
   assertRequiredString(payload.titulo, 'titulo');
   assertRequiredString(payload.descricao, 'descricao');
+  assertRequiredString(payload.genero, 'genero');
   assertRequiredString(payload.data_inicio, 'data_inicio');
   assertRequiredString(payload.data_fim, 'data_fim');
   assertRequiredString(payload.local, 'local');
@@ -125,6 +113,7 @@ function validatePropostaPayload(payload: PropostaCasaDTO) {
 export const authService = {
   async login(payload: LoginPayload) {
     validateLoginPayload(payload);
+
     return usersApi.post<AuthResponse, LoginPayload>('/auth/login', payload, {
       auth: false,
     });
@@ -134,52 +123,66 @@ export const authService = {
 export const usersService = {
   async registerClient(payload: ClienteCadastroPayload) {
     validateClientePayload(payload);
+
     return usersApi.post<ClienteCadastroResponse, ClienteCadastroPayload>(
       '/cliente/cadastro',
       payload,
       { auth: false }
     );
   },
+
   async registerArtist(payload: ArtistaCadastroPayload) {
     validateArtistaPayload(payload);
+
     return usersApi.post<ArtistaCadastroResponse, ArtistaCadastroPayload>(
       '/artista/cadastro',
       payload,
       { auth: false }
     );
   },
+
   async registerCasaShow(payload: CasaDeShowCadastroPayload) {
     validateCasaPayload(payload);
+
     return usersApi.post<CasaDeShowCadastroResponse, CasaDeShowCadastroPayload>(
       '/casaDeShow/cadastro',
       payload,
       { auth: false }
     );
   },
+
   listArtists() {
     return usersApi.get<Artista[]>('/artista/');
   },
+
   getArtist(id: UUID) {
     return usersApi.get<Artista>(`/artista/${id}`);
   },
+
   updateArtist(id: UUID, payload: Partial<Artista>) {
     return usersApi.put<Artista, Partial<Artista>>(`/artista/${id}`, payload);
   },
+
   listCasasShow() {
     return usersApi.get<CasaDeShow[]>('/casaDeShow/');
   },
+
   getCasaShow(id: UUID) {
     return usersApi.get<CasaDeShow>(`/casaDeShow/${id}`);
   },
+
   updateCasaShow(id: UUID, payload: Partial<CasaDeShow>) {
     return usersApi.put<CasaDeShow, Partial<CasaDeShow>>(`/casaDeShow/${id}`, payload);
   },
+
   listClientes() {
     return usersApi.get<Cliente[]>('/cliente/');
   },
+
   getCliente(id: UUID) {
     return usersApi.get<Cliente>(`/cliente/${id}`);
   },
+
   updateCliente(id: UUID, payload: Partial<Cliente>) {
     return usersApi.put<Cliente, Partial<Cliente>>(`/cliente/${id}`, payload);
   },
@@ -188,21 +191,28 @@ export const usersService = {
 export const eventService = {
   async create(payload: EventoDTO) {
     validateEventoPayload(payload);
+
     return eventsApi.post<Evento, EventoDTO>('evento/', payload);
   },
+
   async list(params?: { page?: number; pageSize?: number }) {
     const response = await eventsApi.get<EventoListResponse>('evento/', { params });
+
     return unwrapList<Evento>(response);
   },
+
   listRaw(params?: { page?: number; pageSize?: number }) {
     return eventsApi.get<EventoListResponse>('evento/', { params });
   },
+
   listByCasaShow(idCasaShow: UUID) {
     return eventsApi.get<Evento[]>(`evento/casa/${idCasaShow}`);
   },
+
   getById(id: UUID) {
     return eventsApi.get<Evento>(`evento/${id}`);
   },
+
   update(id: UUID, payload: Partial<EventoDTO>) {
     return eventsApi.put<Evento, Partial<EventoDTO>>(`/${id}`, payload);
   },
@@ -211,20 +221,26 @@ export const eventService = {
 export const proposalService = {
   async create(payload: PropostaCasaDTO) {
     validatePropostaPayload(payload);
+
     return eventsApi.post<PropostaCasaResponse, PropostaCasaDTO>('propostaCasa/', payload);
   },
+
   list() {
     return eventsApi.get<PropostaCasa[]>('propostaCasa/');
   },
+
   listByCasaShow(idCasaShow: UUID) {
     return eventsApi.get<PropostaCasa[]>(`propostaCasa/casa/${idCasaShow}`);
   },
+
   listByArtist(idArtista: UUID) {
     return eventsApi.get<PropostaCasa[]>(`propostaCasa/artista/${idArtista}`);
   },
+
   getById(id: UUID) {
-    return eventsApi.get<PropostaCasa>(`/${id}`);
+    return eventsApi.get<PropostaCasa>(`propostaCasa/${id}`);
   },
+
   update(id: UUID, payload: UpdatePropostaPayload) {
     return eventsApi.put<PropostaCasa, UpdatePropostaPayload>(`propostaCasa/${id}`, payload);
   },

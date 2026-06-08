@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { eventService } from '../../services/api';
+import { eventService, proposalService } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   colors,
@@ -25,6 +25,7 @@ import {
   getEventId,
   isFutureOrToday,
   normalizeEvent,
+  normalizeProposal,
   parseApiDate,
 } from '../../utils/casaShowData';
 
@@ -47,6 +48,16 @@ function getStatusStyle(status) {
   return styles.statusFinished;
 }
 
+function getProposalEventId(proposal) {
+  return (
+    proposal?.id_evento ||
+    proposal?.idEvento ||
+    proposal?.evento?.id_evento ||
+    proposal?.evento?.id ||
+    ''
+  );
+}
+
 function groupEventsByMonth(events) {
   return events.reduce((acc, eventItem) => {
     const date = parseApiDate(eventItem.data_inicio);
@@ -66,16 +77,21 @@ function groupEventsByMonth(events) {
 export default function CasaShowEventosResumoScreen() {
   const { session } = useAuth();
   const [events, setEvents] = useState([]);
+  const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const loadEvents = useCallback(async () => {
-    const casaId = session?.id_usuario || session?.id;
+  const casaId = useMemo(
+    () => session?.id_usuario || session?.id || '',
+    [session]
+  );
 
+  const loadEvents = useCallback(async () => {
     if (!casaId) {
       setError('Sessão inválida.');
       setEvents([]);
+      setProposals([]);
       setLoading(false);
       setRefreshing(false);
       return;
@@ -83,21 +99,50 @@ export default function CasaShowEventosResumoScreen() {
 
     try {
       setError('');
-      const response = await eventService.listByCasaShow(casaId);
-      const normalized = Array.isArray(response) ? response.map(normalizeEvent) : [];
-      setEvents(normalized);
+
+      console.log('CASA ID USADO NO RESUMO DE EVENTOS:', casaId);
+
+      const [eventsResponse, proposalsResponse] = await Promise.all([
+        eventService.listByCasaShow(casaId),
+        proposalService.listByCasaShow(casaId),
+      ]);
+
+      console.log('EVENTOS DA CASA - RESUMO:', JSON.stringify(eventsResponse, null, 2));
+      console.log('PROPOSTAS DA CASA - RESUMO:', JSON.stringify(proposalsResponse, null, 2));
+
+      const normalizedEvents = Array.isArray(eventsResponse)
+        ? eventsResponse.map(normalizeEvent)
+        : [];
+
+      const normalizedProposals = Array.isArray(proposalsResponse)
+        ? proposalsResponse.map(normalizeProposal)
+        : [];
+
+      setEvents(normalizedEvents);
+      setProposals(normalizedProposals);
     } catch (requestError) {
+      console.log('ERRO AO CARREGAR RESUMO DE EVENTOS:', requestError);
+
       setError(requestError?.message || 'Nao foi possivel carregar os eventos.');
       setEvents([]);
+      setProposals([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session?.id_usuario, session?.id]);
+  }, [casaId]);
 
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
+
+  const proposalEventIds = useMemo(() => {
+    return new Set(
+      proposals
+        .map((proposal) => getProposalEventId(proposal))
+        .filter(Boolean)
+    );
+  }, [proposals]);
 
   const summary = useMemo(() => {
     const ativos = events.filter((item) => getLifecycleStatus(item) === 'ATIVO').length;
@@ -125,6 +170,13 @@ export default function CasaShowEventosResumoScreen() {
   async function handleRefresh() {
     setRefreshing(true);
     await loadEvents();
+  }
+
+  function handleSendProposal(eventId) {
+    router.push({
+      pathname: '/dashboards/casashow-propostas',
+      params: { id_evento: eventId },
+    });
   }
 
   if (loading) {
@@ -215,10 +267,13 @@ export default function CasaShowEventosResumoScreen() {
               <Text style={styles.sectionTitle}>{month}</Text>
 
               {monthEvents.map((eventItem) => {
+                const eventId = getEventId(eventItem);
                 const lifecycleStatus = getLifecycleStatus(eventItem);
+                const hasProposal = proposalEventIds.has(eventId);
+                const canSendProposal = lifecycleStatus === 'ATIVO' && !hasProposal;
 
                 return (
-                  <View key={getEventId(eventItem)} style={styles.eventCard}>
+                  <View key={eventId} style={styles.eventCard}>
                     <View style={styles.eventHeader}>
                       <View style={styles.eventHeaderText}>
                         <Text style={styles.eventTitle}>{eventItem.titulo}</Text>
@@ -246,6 +301,28 @@ export default function CasaShowEventosResumoScreen() {
                       <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
                       <Text style={styles.metaText}>{eventItem.local}</Text>
                     </View>
+
+                    {hasProposal ? (
+                      <View style={styles.proposalSentBox}>
+                        <Ionicons
+                          name="checkmark-circle-outline"
+                          size={16}
+                          color={colors.success}
+                        />
+                        <Text style={styles.proposalSentText}>Proposta enviada</Text>
+                      </View>
+                    ) : null}
+
+                    {canSendProposal ? (
+                      <TouchableOpacity
+                        style={styles.sendProposalButton}
+                        activeOpacity={0.85}
+                        onPress={() => handleSendProposal(eventId)}
+                      >
+                        <Ionicons name="paper-plane-outline" size={16} color={colors.text} />
+                        <Text style={styles.sendProposalButtonText}>Enviar proposta</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 );
               })}
@@ -432,6 +509,38 @@ const styles = StyleSheet.create({
   },
   statusCanceled: {
     backgroundColor: 'rgba(239, 68, 68, 0.18)',
+  },
+  proposalSentBox: {
+    marginTop: spacing.md,
+    minHeight: 42,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  proposalSentText: {
+    ...typography.bodySmall,
+    color: colors.success,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  sendProposalButton: {
+    marginTop: spacing.md,
+    height: 42,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  sendProposalButtonText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
+    marginLeft: 8,
   },
   emptyState: {
     backgroundColor: colors.backgroundCard,

@@ -11,14 +11,64 @@ import {
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { proposalService } from '../../services/api';
+import { eventService, proposalService, usersService } from '../../services/api';
 import {
   formatCurrency,
   formatDateTime,
+  getProposalId,
   isAcceptedProposal,
   normalizeProposal,
 } from '../../utils/casaShowData';
 import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
+
+function getArtistName(artista) {
+  return (
+    artista?.nome_artista ||
+    artista?.nome ||
+    artista?.usuario?.nome ||
+    'Artista'
+  );
+}
+
+function getEventoTitle(evento) {
+  return evento?.titulo || 'Evento';
+}
+
+function getEventoLocal(evento) {
+  return evento?.local || evento?.endereco || 'Local nao informado';
+}
+
+async function enrichProposal(proposal) {
+  const normalizedProposal = normalizeProposal(proposal);
+
+  const [artistaResult, eventoResult] = await Promise.allSettled([
+    normalizedProposal.id_artista
+      ? usersService.getArtist(normalizedProposal.id_artista)
+      : Promise.resolve(null),
+    normalizedProposal.id_evento
+      ? eventService.getById(normalizedProposal.id_evento)
+      : Promise.resolve(null),
+  ]);
+
+  const artista =
+    artistaResult.status === 'fulfilled' && artistaResult.value
+      ? artistaResult.value
+      : null;
+
+  const evento =
+    eventoResult.status === 'fulfilled' && eventoResult.value
+      ? eventoResult.value
+      : null;
+
+  return {
+    ...normalizedProposal,
+    artista,
+    evento,
+    artista_nome: getArtistName(artista) || normalizedProposal.artista_nome,
+    evento_titulo: getEventoTitle(evento) || normalizedProposal.evento_titulo,
+    evento_local: getEventoLocal(evento) || normalizedProposal.evento_local,
+  };
+}
 
 export default function CasaShowPropostasAceitasScreen() {
   const { session } = useAuth();
@@ -26,19 +76,45 @@ export default function CasaShowPropostasAceitasScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const casaShowId = useMemo(
+    () => session?.id_usuario || session?.id || '',
+    [session]
+  );
+
   const loadProposals = useCallback(async () => {
-    if (!session?.id) return;
+    if (!casaShowId) {
+      setError('Sessão inválida.');
+      setLoading(false);
+      return;
+    }
 
     try {
       setError('');
-      const response = await proposalService.listByCasaShow(session.id);
-      setProposals(Array.isArray(response) ? response.map(normalizeProposal) : []);
+
+      console.log('CASA SHOW ID USADO NA BUSCA:', casaShowId);
+
+      const response = await proposalService.listByCasaShow(casaShowId);
+
+      console.log('PROPOSTAS DA CASA - API:', JSON.stringify(response, null, 2));
+
+      const proposalList = Array.isArray(response) ? response : [];
+
+      const enriched = await Promise.all(
+        proposalList.map((proposal) => enrichProposal(proposal))
+      );
+
+      console.log('PROPOSTAS DA CASA - ENRIQUECIDAS:', JSON.stringify(enriched, null, 2));
+
+      setProposals(enriched);
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel carregar propostas aceitas.');
+      console.log('ERRO AO CARREGAR PROPOSTAS ACEITAS DA CASA:', requestError);
+
+      setError(requestError?.message || 'Nao foi possivel carregar propostas aceitas.');
+      setProposals([]);
     } finally {
       setLoading(false);
     }
-  }, [session?.id]);
+  }, [casaShowId]);
 
   useEffect(() => {
     loadProposals();
@@ -93,21 +169,70 @@ export default function CasaShowPropostasAceitasScreen() {
         </View>
 
         {acceptedProposals.length > 0 ? (
-          acceptedProposals.map((proposal) => (
-            <View key={proposal.id_proposta} style={styles.proposalCard}>
-              <View style={styles.proposalInfo}>
-                <Text style={styles.proposalTitle}>{proposal.artista_nome}</Text>
-                <Text style={styles.proposalMeta}>{proposal.evento_titulo}</Text>
-                <Text style={styles.proposalMeta}>{formatDateTime(proposal.data_evento)}</Text>
-              </View>
+          acceptedProposals.map((proposal) => {
+            const proposalId = getProposalId(proposal);
 
-              <View style={styles.valueBox}>
-                <Text style={styles.valueText}>
-                  {formatCurrency(proposal.valor_ofertado)}
-                </Text>
+            return (
+              <View key={proposalId} style={styles.proposalCard}>
+                <View style={styles.proposalInfo}>
+                  <View style={styles.titleRow}>
+                    <Ionicons
+                      name="person-circle-outline"
+                      size={18}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.proposalTitle}>
+                      {proposal.artista_nome || 'Artista'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Ionicons
+                      name="ticket-outline"
+                      size={15}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.proposalMeta}>
+                      {proposal.evento_titulo || 'Evento'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Ionicons
+                      name="location-outline"
+                      size={15}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.proposalMeta}>
+                      {proposal.evento_local || 'Local nao informado'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={15}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.proposalMeta}>
+                      {formatDateTime(proposal.data_evento)}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.valueBox}>
+                  <Ionicons
+                    name="cash-outline"
+                    size={14}
+                    color={colors.success}
+                  />
+                  <Text style={styles.valueText}>
+                    {formatCurrency(proposal.valor_ofertado)}
+                  </Text>
+                </View>
               </View>
-            </View>
-          ))
+            );
+          })
         ) : (
           <View style={styles.emptyState}>
             <MaterialCommunityIcons name="file-search-outline" size={46} color={colors.textMuted} />
@@ -187,16 +312,47 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     ...shadows.small,
   },
-  proposalInfo: { flex: 1, marginRight: spacing.sm },
-  proposalTitle: { ...typography.body, color: colors.text, fontWeight: '700' },
-  proposalMeta: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 4 },
+  proposalInfo: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  proposalTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+    marginLeft: 8,
+    flexShrink: 1,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 5,
+  },
+  proposalMeta: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginLeft: 8,
+    flexShrink: 1,
+  },
   valueBox: {
     borderRadius: borderRadius.full,
     backgroundColor: 'rgba(16, 185, 129, 0.18)',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  valueText: { ...typography.caption, color: colors.success, fontWeight: '700' },
+  valueText: {
+    ...typography.caption,
+    color: colors.success,
+    fontWeight: '700',
+    marginLeft: 6,
+  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',

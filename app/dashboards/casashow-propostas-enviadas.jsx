@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { proposalService } from '../../services/api';
+import { eventService, proposalService, usersService } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   colors,
@@ -23,7 +23,9 @@ import {
 
 function parseDate(value) {
   if (!value) return null;
+
   const date = new Date(value);
+
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -49,7 +51,10 @@ function formatCurrency(value) {
 }
 
 function normalizeStatus(status) {
-  return String(status || 'PENDENTE').toUpperCase();
+  return String(status || 'PENDENTE')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
 }
 
 function isAccepted(status) {
@@ -58,10 +63,18 @@ function isAccepted(status) {
   );
 }
 
+function isRejected(status) {
+  return ['RECUSADA', 'RECUSADO', 'CANCELADA', 'CANCELADO'].includes(
+    normalizeStatus(status)
+  );
+}
+
 function getStatusLabel(status) {
   const normalized = normalizeStatus(status);
+
   if (isAccepted(normalized)) return 'Aceita';
-  if (normalized === 'RECUSADA') return 'Recusada';
+  if (isRejected(normalized)) return 'Recusada';
+
   return 'Pendente';
 }
 
@@ -69,31 +82,114 @@ function getStatusStyle(status) {
   const normalized = normalizeStatus(status);
 
   if (isAccepted(normalized)) return styles.statusSuccess;
-  if (normalized === 'RECUSADA') return styles.statusDanger;
+  if (isRejected(normalized)) return styles.statusDanger;
+
   return styles.statusPending;
 }
 
+function getStatusIconName(status) {
+  const normalized = normalizeStatus(status);
+
+  if (isAccepted(normalized)) return 'checkmark-circle-outline';
+  if (isRejected(normalized)) return 'close-circle-outline';
+
+  return 'time-outline';
+}
+
 function getProposalId(item) {
-  return item?.id || item?.id_proposta || item?.id_proposta_casa || item?.uuid;
+  return (
+    item?.id_proposta_casa ||
+    item?.id_proposta ||
+    item?.id ||
+    item?.uuid
+  );
+}
+
+function getArtistName(artista) {
+  return (
+    artista?.nome_artista ||
+    artista?.nome ||
+    artista?.usuario?.nome ||
+    'Artista nao informado'
+  );
+}
+
+function getEventoTitle(evento) {
+  return evento?.titulo || 'Evento sem titulo';
+}
+
+function getEventoLocal(evento) {
+  return evento?.local || evento?.endereco || 'Local nao informado';
 }
 
 function normalizeProposal(item) {
-  const artista = item?.artista || {};
-  const evento = item?.evento || {};
+  const artista = item?.artista || item?.Artista || {};
+  const evento = item?.evento || item?.Evento || item?.event || {};
 
   return {
     id: getProposalId(item),
+    idArtista: item?.id_artista || item?.idArtista || artista?.id_usuario || artista?.id || '',
+    idEvento: item?.id_evento || item?.idEvento || evento?.id_evento || evento?.id || '',
     artistaNome:
       item?.artista_nome ||
-      artista?.nome_artista ||
-      artista?.usuario?.nome ||
-      'Artista nao informado',
-    dataEvento: item?.data_evento || evento?.data_inicio || null,
-    tituloEvento: evento?.titulo || item?.titulo || 'Evento sem titulo',
-    local: evento?.local || item?.local || 'Local nao informado',
-    valor: Number(item?.valor_ofertado || item?.valor || 0),
+      item?.nome_artista ||
+      getArtistName(artista),
+    dataEvento:
+      item?.data_evento ||
+      item?.dataEvento ||
+      evento?.data_inicio ||
+      evento?.data_evento ||
+      null,
+    tituloEvento:
+      item?.evento_titulo ||
+      item?.nome_evento ||
+      item?.titulo ||
+      getEventoTitle(evento),
+    local:
+      item?.evento_local ||
+      item?.local_evento ||
+      item?.local ||
+      getEventoLocal(evento),
+    valor: Number(item?.valor_ofertado || item?.valorOfertado || item?.valor || 0),
     status: normalizeStatus(item?.status),
     termos: item?.termos || '',
+  };
+}
+
+async function enrichProposal(item) {
+  const normalizedProposal = normalizeProposal(item);
+
+  const [artistaResult, eventoResult] = await Promise.allSettled([
+    normalizedProposal.idArtista
+      ? usersService.getArtist(normalizedProposal.idArtista)
+      : Promise.resolve(null),
+    normalizedProposal.idEvento
+      ? eventService.getById(normalizedProposal.idEvento)
+      : Promise.resolve(null),
+  ]);
+
+  const artista =
+    artistaResult.status === 'fulfilled' && artistaResult.value
+      ? artistaResult.value
+      : null;
+
+  const evento =
+    eventoResult.status === 'fulfilled' && eventoResult.value
+      ? eventoResult.value
+      : null;
+
+  return {
+    ...normalizedProposal,
+    artista,
+    evento,
+    artistaNome: getArtistName(artista) || normalizedProposal.artistaNome,
+    tituloEvento: getEventoTitle(evento) || normalizedProposal.tituloEvento,
+    local: getEventoLocal(evento) || normalizedProposal.local,
+    dataEvento:
+      normalizedProposal.dataEvento ||
+      evento?.data_inicio ||
+      evento?.data_evento ||
+      null,
   };
 }
 
@@ -104,9 +200,12 @@ export default function CasaShowPropostasEnviadasScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const loadProposals = useCallback(async () => {
-    const casaId = session?.id_usuario || session?.id;
+  const casaId = useMemo(
+    () => session?.id_usuario || session?.id || '',
+    [session]
+  );
 
+  const loadProposals = useCallback(async () => {
     if (!casaId) {
       setError('Sessão inválida.');
       setLoading(false);
@@ -116,17 +215,32 @@ export default function CasaShowPropostasEnviadasScreen() {
 
     try {
       setError('');
+
+      console.log('CASA ID USADO NA BUSCA DE PROPOSTAS ENVIADAS:', casaId);
+
       const response = await proposalService.listByCasaShow(casaId);
-      const normalized = Array.isArray(response) ? response.map(normalizeProposal) : [];
-      setProposals(normalized);
+
+      console.log('PROPOSTAS ENVIADAS - API:', JSON.stringify(response, null, 2));
+
+      const proposalList = Array.isArray(response) ? response : [];
+
+      const enriched = await Promise.all(
+        proposalList.map((proposal) => enrichProposal(proposal))
+      );
+
+      console.log('PROPOSTAS ENVIADAS - ENRIQUECIDAS:', JSON.stringify(enriched, null, 2));
+
+      setProposals(enriched);
     } catch (requestError) {
+      console.log('ERRO AO CARREGAR PROPOSTAS ENVIADAS:', requestError);
+
       setError(requestError?.message || 'Nao foi possivel carregar as propostas.');
       setProposals([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session]);
+  }, [casaId]);
 
   useEffect(() => {
     loadProposals();
@@ -138,6 +252,7 @@ export default function CasaShowPropostasEnviadasScreen() {
       .sort((a, b) => {
         const dateA = parseDate(a.dataEvento)?.getTime() || 0;
         const dateB = parseDate(b.dataEvento)?.getTime() || 0;
+
         return dateB - dateA;
       });
   }, [proposals]);
@@ -197,20 +312,44 @@ export default function CasaShowPropostasEnviadasScreen() {
         ) : null}
 
         <View style={styles.summaryCard}>
+          <Ionicons name="paper-plane-outline" size={28} color={colors.primary} />
           <Text style={styles.summaryValue}>{propostasEnviadas.length}</Text>
           <Text style={styles.summaryLabel}>propostas pendentes ou recusadas</Text>
         </View>
 
         {propostasEnviadas.length > 0 ? (
           propostasEnviadas.map((proposal) => (
-            <View key={proposal.id || `${proposal.artistaNome}-${proposal.dataEvento}`} style={styles.card}>
+            <View
+              key={proposal.id || `${proposal.artistaNome}-${proposal.dataEvento}`}
+              style={styles.card}
+            >
               <View style={styles.cardHeader}>
                 <View style={styles.cardHeaderText}>
-                  <Text style={styles.artistName}>{proposal.artistaNome}</Text>
-                  <Text style={styles.eventTitle}>{proposal.tituloEvento}</Text>
+                  <View style={styles.titleRow}>
+                    <Ionicons
+                      name="person-circle-outline"
+                      size={18}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.artistName}>{proposal.artistaNome}</Text>
+                  </View>
+
+                  <View style={styles.eventRow}>
+                    <Ionicons
+                      name="ticket-outline"
+                      size={15}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.eventTitle}>{proposal.tituloEvento}</Text>
+                  </View>
                 </View>
 
                 <View style={[styles.statusBadge, getStatusStyle(proposal.status)]}>
+                  <Ionicons
+                    name={getStatusIconName(proposal.status)}
+                    size={13}
+                    color={colors.text}
+                  />
                   <Text style={styles.statusText}>{getStatusLabel(proposal.status)}</Text>
                 </View>
               </View>
@@ -226,12 +365,22 @@ export default function CasaShowPropostasEnviadasScreen() {
               </View>
 
               <View style={styles.footerRow}>
-                <Text style={styles.valueText}>{formatCurrency(proposal.valor)}</Text>
+                <View style={styles.valueRow}>
+                  <Ionicons name="cash-outline" size={16} color="#19D38A" />
+                  <Text style={styles.valueText}>{formatCurrency(proposal.valor)}</Text>
+                </View>
               </View>
 
               {proposal.termos ? (
                 <View style={styles.termsBox}>
-                  <Text style={styles.termsLabel}>Termos</Text>
+                  <View style={styles.termsHeader}>
+                    <Ionicons
+                      name="document-text-outline"
+                      size={14}
+                      color={colors.textMuted}
+                    />
+                    <Text style={styles.termsLabel}>Termos</Text>
+                  </View>
                   <Text style={styles.termsText}>{proposal.termos}</Text>
                 </View>
               ) : null}
@@ -317,6 +466,7 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
     color: colors.text,
+    marginTop: spacing.xs,
   },
   summaryLabel: {
     ...typography.bodySmall,
@@ -343,16 +493,28 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: spacing.sm,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   artistName: {
     ...typography.body,
     color: colors.text,
     fontWeight: '700',
-    marginBottom: 2,
+    marginLeft: 8,
+    flexShrink: 1,
   },
   eventTitle: {
     ...typography.bodySmall,
     color: colors.primary,
     fontWeight: '700',
+    marginLeft: 8,
+    flexShrink: 1,
   },
   metaRow: {
     flexDirection: 'row',
@@ -371,15 +533,22 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   valueText: {
     ...typography.body,
     color: '#19D38A',
     fontWeight: '700',
+    marginLeft: 6,
   },
   statusBadge: {
     borderRadius: borderRadius.full,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   statusSuccess: {
     backgroundColor: 'rgba(16, 185, 129, 0.18)',
@@ -394,6 +563,7 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.text,
     fontWeight: '700',
+    marginLeft: 4,
   },
   termsBox: {
     marginTop: spacing.md,
@@ -403,10 +573,15 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
   },
+  termsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   termsLabel: {
     ...typography.caption,
     color: colors.textMuted,
-    marginBottom: 6,
+    marginLeft: 6,
   },
   termsText: {
     ...typography.bodySmall,

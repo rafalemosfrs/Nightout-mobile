@@ -34,6 +34,7 @@ import {
 } from '../../constants/theme';
 
 const WEEK_DAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
+
 const MONTH_NAMES = [
   'Janeiro',
   'Fevereiro',
@@ -69,17 +70,108 @@ function buildCalendarMatrix(month, year) {
   return weeks;
 }
 
+function normalizeStatus(status) {
+  return String(status || 'PENDENTE')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+}
+
+function isRejectedProposal(status) {
+  return ['RECUSADA', 'RECUSADO', 'CANCELADA', 'CANCELADO'].includes(
+    normalizeStatus(status)
+  );
+}
+
 function getStatusStyle(status) {
-  return isAcceptedProposal(status) || status === 'Confirmado'
-    ? styles.statusSuccess
-    : styles.statusPending;
+  const normalized = normalizeStatus(status);
+
+  if (isAcceptedProposal(normalized) || normalized === 'CONFIRMADO') {
+    return styles.statusSuccess;
+  }
+
+  if (isRejectedProposal(normalized)) {
+    return styles.statusDanger;
+  }
+
+  return styles.statusPending;
+}
+
+function getStatusIconName(status) {
+  const normalized = normalizeStatus(status);
+
+  if (isAcceptedProposal(normalized) || normalized === 'CONFIRMADO') {
+    return 'checkmark-circle-outline';
+  }
+
+  if (isRejectedProposal(normalized)) {
+    return 'close-circle-outline';
+  }
+
+  return 'time-outline';
 }
 
 function getProposalStatusLabel(status) {
-  const normalized = String(status || 'PENDENTE').toUpperCase();
+  const normalized = normalizeStatus(status);
+
   if (isAcceptedProposal(normalized)) return 'Aceita';
-  if (normalized === 'RECUSADA') return 'Recusada';
+  if (isRejectedProposal(normalized)) return 'Recusada';
+
   return 'Pendente';
+}
+
+function getArtistName(artista) {
+  return (
+    artista?.nome_artista ||
+    artista?.nome ||
+    artista?.usuario?.nome ||
+    'Artista'
+  );
+}
+
+function getEventoTitle(evento) {
+  return evento?.titulo || 'Evento';
+}
+
+function getEventoLocal(evento) {
+  return evento?.local || evento?.endereco || 'Local nao informado';
+}
+
+async function enrichProposal(proposal) {
+  const normalizedProposal = normalizeProposal(proposal);
+
+  const [artistaResult, eventoResult] = await Promise.allSettled([
+    normalizedProposal.id_artista
+      ? usersService.getArtist(normalizedProposal.id_artista)
+      : Promise.resolve(null),
+    normalizedProposal.id_evento
+      ? eventService.getById(normalizedProposal.id_evento)
+      : Promise.resolve(null),
+  ]);
+
+  const artista =
+    artistaResult.status === 'fulfilled' && artistaResult.value
+      ? artistaResult.value
+      : null;
+
+  const evento =
+    eventoResult.status === 'fulfilled' && eventoResult.value
+      ? eventoResult.value
+      : null;
+
+  return {
+    ...normalizedProposal,
+    artista,
+    evento,
+    artista_nome: getArtistName(artista) || normalizedProposal.artista_nome,
+    evento_titulo: getEventoTitle(evento) || normalizedProposal.evento_titulo,
+    evento_local: getEventoLocal(evento) || normalizedProposal.evento_local,
+    data_evento:
+      normalizedProposal.data_evento ||
+      evento?.data_inicio ||
+      evento?.data_evento ||
+      '',
+  };
 }
 
 export default function CasaShowDashboardScreen() {
@@ -92,44 +184,73 @@ export default function CasaShowDashboardScreen() {
   const [error, setError] = useState('');
   const [selectedDay, setSelectedDay] = useState(new Date().getDate());
 
-const loadDashboard = useCallback(async () => {
-  if (!session?.id) {
-    setCasa(null);
-    setEvents([]);
-    setProposals([]);
-    setLoading(false);
-    setRefreshing(false);
-    return;
-  }
+  const casaShowId = useMemo(
+    () => session?.id_usuario || session?.id || '',
+    [session]
+  );
 
-  try {
+  const loadDashboard = useCallback(async () => {
+    if (!casaShowId) {
+      setCasa(null);
+      setEvents([]);
+      setProposals([]);
+      setError('Sessão inválida.');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    try {
       setError('');
 
+      console.log('CASA SHOW ID USADO NA DASHBOARD:', casaShowId);
+
       const [casaResult, eventsResult, proposalsResult] = await Promise.allSettled([
-        usersService.getCasaShow(session.id),
-        eventService.listByCasaShow(session.id),
-        proposalService.listByCasaShow(session.id),
+        usersService.getCasaShow(casaShowId),
+        eventService.listByCasaShow(casaShowId),
+        proposalService.listByCasaShow(casaShowId),
       ]);
 
       if (casaResult.status === 'fulfilled') {
+        console.log('DADOS DA CASA - API:', JSON.stringify(casaResult.value, null, 2));
         setCasa(normalizeCasa(casaResult.value, session));
       } else {
+        console.log('ERRO AO BUSCAR CASA:', casaResult.reason);
         setCasa(normalizeCasa({}, session));
       }
 
       if (eventsResult.status === 'fulfilled') {
-        setEvents(Array.isArray(eventsResult.value) ? eventsResult.value.map(normalizeEvent) : []);
+        console.log('EVENTOS DA CASA - API:', JSON.stringify(eventsResult.value, null, 2));
+
+        setEvents(
+          Array.isArray(eventsResult.value)
+            ? eventsResult.value.map(normalizeEvent)
+            : []
+        );
       } else {
+        console.log('ERRO AO BUSCAR EVENTOS DA CASA:', eventsResult.reason);
         setEvents([]);
       }
 
       if (proposalsResult.status === 'fulfilled') {
-        setProposals(
-          Array.isArray(proposalsResult.value)
-            ? proposalsResult.value.map(normalizeProposal)
-            : []
+        console.log('PROPOSTAS DA CASA - API:', JSON.stringify(proposalsResult.value, null, 2));
+
+        const proposalList = Array.isArray(proposalsResult.value)
+          ? proposalsResult.value
+          : [];
+
+        const enrichedProposals = await Promise.all(
+          proposalList.map((proposal) => enrichProposal(proposal))
         );
+
+        console.log(
+          'PROPOSTAS DA CASA - ENRIQUECIDAS:',
+          JSON.stringify(enrichedProposals, null, 2)
+        );
+
+        setProposals(enrichedProposals);
       } else {
+        console.log('ERRO AO BUSCAR PROPOSTAS DA CASA:', proposalsResult.reason);
         setProposals([]);
       }
 
@@ -141,22 +262,24 @@ const loadDashboard = useCallback(async () => {
         setError('Alguns dados nao puderam ser carregados. Puxe para atualizar.');
       }
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel carregar a dashboard.');
+      console.log('ERRO AO CARREGAR DASHBOARD DA CASA:', requestError);
+
+      setError(requestError?.message || 'Nao foi possivel carregar a dashboard.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session]);
+  }, [casaShowId, session]);
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
 
   const dashboard = useMemo(() => {
-    const now = Date.now();
     const sortedEvents = [...events].sort((a, b) => {
       const dateA = parseApiDate(a.data_inicio)?.getTime() || 0;
       const dateB = parseApiDate(b.data_inicio)?.getTime() || 0;
+
       return dateA - dateB;
     });
 
@@ -168,35 +291,33 @@ const loadDashboard = useCallback(async () => {
       isAcceptedProposal(proposal.status)
     );
 
-    const proposalsByEvent = new Set(
-      proposals.map((proposal) => proposal.id_evento).filter(Boolean)
-    );
-
     const nextEvent = upcomingEvents[0] || null;
     const current = new Date();
     const month = current.getMonth() + 1;
     const year = current.getFullYear();
+
     const eventsThisMonth = sortedEvents.filter((eventItem) => {
       const date = parseApiDate(eventItem.data_inicio);
+
       return date && date.getMonth() + 1 === month && date.getFullYear() === year;
     });
 
     const eventsByDay = eventsThisMonth.reduce((acc, eventItem) => {
       const date = parseApiDate(eventItem.data_inicio);
+
       if (!date) return acc;
 
       const day = date.getDate();
       acc[day] = acc[day] || [];
       acc[day].push(eventItem);
+
       return acc;
     }, {});
 
     return {
-      now,
       sortedEvents,
       upcomingEvents,
       acceptedProposals,
-      proposalsByEvent,
       nextEvent,
       month,
       year,
@@ -236,35 +357,35 @@ const loadDashboard = useCallback(async () => {
   }
 
   const summaryCards = [
-  {
-    title: 'Eventos da casa',
-    value: dashboard.resumo.eventosCasa,
-    subtitle: 'Total cadastrado',
-    icon: 'calendar-outline',
-    onPress: () => router.push('/dashboards/casashow-eventos-resumo'),
-  },
-  {
-    title: 'Proximos eventos',
-    value: dashboard.resumo.proximosEventos,
-    subtitle: 'Agenda futura',
-    icon: 'time-outline',
-    onPress: () => router.push('/dashboards/casashow-eventos'),
-  },
-  {
-    title: 'Propostas enviadas',
-    value: dashboard.resumo.propostasEnviadas,
-    subtitle: 'Aguardando retorno',
-    icon: 'paper-plane-outline',
-    onPress: () => router.push('/dashboards/casashow-propostas-enviadas'),
-  },
-  {
-    title: 'Propostas aceitas',
-    value: dashboard.resumo.propostasAceitas,
-    subtitle: 'Negociacoes fechadas',
-    icon: 'checkmark-circle-outline',
-    onPress: () => router.push('/dashboards/casashow-propostas-aceitas'),
-  },
-];
+    {
+      title: 'Eventos da casa',
+      value: dashboard.resumo.eventosCasa,
+      subtitle: 'Total cadastrado',
+      icon: 'calendar-outline',
+      onPress: () => router.push('/dashboards/casashow-eventos-resumo'),
+    },
+    {
+      title: 'Proximos eventos',
+      value: dashboard.resumo.proximosEventos,
+      subtitle: 'Agenda futura',
+      icon: 'time-outline',
+      onPress: () => router.push('/dashboards/casashow-eventos'),
+    },
+    {
+      title: 'Propostas enviadas',
+      value: dashboard.resumo.propostasEnviadas,
+      subtitle: 'Aguardando retorno',
+      icon: 'paper-plane-outline',
+      onPress: () => router.push('/dashboards/casashow-propostas-enviadas'),
+    },
+    {
+      title: 'Propostas aceitas',
+      value: dashboard.resumo.propostasAceitas,
+      subtitle: 'Negociacoes fechadas',
+      icon: 'checkmark-circle-outline',
+      onPress: () => router.push('/dashboards/casashow-propostas-aceitas'),
+    },
+  ];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -373,33 +494,34 @@ const loadDashboard = useCallback(async () => {
           {dashboard.upcomingEvents.length > 0 ? (
             dashboard.upcomingEvents.slice(0, 4).map((eventItem) => {
               const eventId = getEventId(eventItem);
-              const hasProposal = dashboard.proposalsByEvent.has(eventId);
 
               return (
                 <View key={eventId} style={styles.nextEventCard}>
-                  <View style={styles.nextEventTopRow}>
-                    <View style={styles.nextEventTextBox}>
+                  <View style={styles.nextEventTextBox}>
+                    <View style={styles.metaRow}>
+                      <Ionicons name="ticket-outline" size={15} color={colors.primary} />
                       <Text style={styles.nextEventTitle}>{eventItem.titulo}</Text>
+                    </View>
+
+                    <View style={styles.metaRow}>
+                      <Ionicons
+                        name="calendar-outline"
+                        size={14}
+                        color={colors.textSecondary}
+                      />
                       <Text style={styles.nextEventText}>
                         {formatDateTime(eventItem.data_inicio)}
                       </Text>
-                      <Text style={styles.nextEventText}>{eventItem.local}</Text>
                     </View>
 
-                    {!hasProposal ? (
-                      <TouchableOpacity
-                        style={styles.addProposalButton}
-                        activeOpacity={0.85}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/dashboards/casashow-propostas',
-                            params: { id_evento: eventId },
-                          })
-                        }
-                      >
-                        <Text style={styles.addProposalButtonText}>Adicionar proposta</Text>
-                      </TouchableOpacity>
-                    ) : null}
+                    <View style={styles.metaRow}>
+                      <Ionicons
+                        name="location-outline"
+                        size={14}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={styles.nextEventText}>{eventItem.local}</Text>
+                    </View>
                   </View>
                 </View>
               );
@@ -439,11 +561,22 @@ const loadDashboard = useCallback(async () => {
 
           {dashboard.nextEvent ? (
             <View style={styles.nextEventCard}>
-              <Text style={styles.nextEventTitle}>{dashboard.nextEvent.titulo}</Text>
-              <Text style={styles.nextEventText}>
-                {formatDateTime(dashboard.nextEvent.data_inicio)}
-              </Text>
-              <Text style={styles.nextEventText}>{dashboard.nextEvent.local}</Text>
+              <View style={styles.metaRow}>
+                <Ionicons name="ticket-outline" size={15} color={colors.primary} />
+                <Text style={styles.nextEventTitle}>{dashboard.nextEvent.titulo}</Text>
+              </View>
+
+              <View style={styles.metaRow}>
+                <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.nextEventText}>
+                  {formatDateTime(dashboard.nextEvent.data_inicio)}
+                </Text>
+              </View>
+
+              <View style={styles.metaRow}>
+                <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.nextEventText}>{dashboard.nextEvent.local}</Text>
+              </View>
             </View>
           ) : (
             <Text style={styles.emptyText}>Nenhum evento futuro.</Text>
@@ -464,13 +597,44 @@ const loadDashboard = useCallback(async () => {
             proposals.slice(0, 4).map((proposal) => (
               <View key={proposal.id_proposta} style={styles.proposalCard}>
                 <View style={styles.proposalInfo}>
-                  <Text style={styles.proposalTitle}>{proposal.artista_nome}</Text>
-                  <Text style={styles.proposalSubtitle}>
-                    {formatDateTime(proposal.data_evento)}
-                  </Text>
+                  <View style={styles.metaRow}>
+                    <Ionicons
+                      name="person-circle-outline"
+                      size={16}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.proposalTitle}>{proposal.artista_nome}</Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Ionicons
+                      name="ticket-outline"
+                      size={14}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.proposalSubtitle}>
+                      {proposal.evento_titulo || 'Evento'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={14}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.proposalSubtitle}>
+                      {formatDateTime(proposal.data_evento)}
+                    </Text>
+                  </View>
                 </View>
 
                 <View style={[styles.statusBadge, getStatusStyle(proposal.status)]}>
+                  <Ionicons
+                    name={getStatusIconName(proposal.status)}
+                    size={13}
+                    color={colors.text}
+                  />
                   <Text style={styles.statusText}>
                     {getProposalStatusLabel(proposal.status)}
                   </Text>
@@ -552,13 +716,38 @@ const loadDashboard = useCallback(async () => {
               selectedDayEvents.map((eventItem) => (
                 <View key={getEventId(eventItem)} style={styles.selectedEventCard}>
                   <View style={styles.selectedEventLeft}>
-                    <Text style={styles.selectedEventName}>{eventItem.titulo}</Text>
-                    <Text style={styles.selectedEventMeta}>
-                      {formatTimeOnly(eventItem.data_inicio)} - {eventItem.local}
-                    </Text>
+                    <View style={styles.metaRow}>
+                      <Ionicons name="ticket-outline" size={14} color={colors.primary} />
+                      <Text style={styles.selectedEventName}>{eventItem.titulo}</Text>
+                    </View>
+
+                    <View style={styles.metaRow}>
+                      <Ionicons
+                        name="time-outline"
+                        size={13}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={styles.selectedEventMeta}>
+                        {formatTimeOnly(eventItem.data_inicio)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.metaRow}>
+                      <Ionicons
+                        name="location-outline"
+                        size={13}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={styles.selectedEventMeta}>{eventItem.local}</Text>
+                    </View>
                   </View>
 
                   <View style={[styles.statusBadge, getStatusStyle('Confirmado')]}>
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={13}
+                      color={colors.text}
+                    />
                     <Text style={styles.statusText}>Confirmado</Text>
                   </View>
                 </View>
@@ -793,38 +982,21 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  nextEventTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
   nextEventTextBox: {
     flex: 1,
-    marginRight: spacing.sm,
   },
   nextEventTitle: {
     ...typography.body,
     color: colors.text,
     fontWeight: '700',
-    marginBottom: 6,
+    marginLeft: 8,
+    flexShrink: 1,
   },
   nextEventText: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  addProposalButton: {
-    minHeight: 38,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addProposalButtonText: {
-    ...typography.caption,
-    color: colors.text,
-    fontWeight: '700',
+    marginLeft: 8,
+    flexShrink: 1,
   },
   detailGrid: {
     gap: spacing.sm,
@@ -870,16 +1042,26 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.text,
     fontWeight: '700',
-    marginBottom: 4,
+    marginLeft: 8,
+    flexShrink: 1,
   },
   proposalSubtitle: {
     ...typography.caption,
     color: colors.textSecondary,
+    marginLeft: 8,
+    flexShrink: 1,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
   },
   statusBadge: {
     borderRadius: borderRadius.full,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   statusSuccess: {
     backgroundColor: 'rgba(16, 185, 129, 0.18)',
@@ -887,10 +1069,14 @@ const styles = StyleSheet.create({
   statusPending: {
     backgroundColor: 'rgba(245, 158, 11, 0.18)',
   },
+  statusDanger: {
+    backgroundColor: 'rgba(239, 68, 68, 0.16)',
+  },
   statusText: {
     ...typography.caption,
     color: colors.text,
     fontWeight: '700',
+    marginLeft: 4,
   },
   calendarCard: {
     backgroundColor: colors.backgroundCard,
@@ -1010,10 +1196,13 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.text,
     fontWeight: '700',
-    marginBottom: 4,
+    marginLeft: 8,
+    flexShrink: 1,
   },
   selectedEventMeta: {
     ...typography.caption,
     color: colors.textSecondary,
+    marginLeft: 8,
+    flexShrink: 1,
   },
 });

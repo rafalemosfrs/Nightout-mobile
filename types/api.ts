@@ -9,6 +9,7 @@ export interface UserSession {
   nome: string;
   tipo: UsuarioTipo;
   token: string;
+  preferencias?: string;
 }
 
 export interface LoginPayload {
@@ -23,6 +24,7 @@ export interface AuthResponse {
   tipo: UsuarioTipo;
   nome: string;
   email: string;
+  preferencias?: string;
 }
 
 export interface ClienteCadastroPayload {
@@ -45,6 +47,12 @@ export interface Cliente {
   preferencias?: string;
   data_nascimento?: ISODateTimeString | string;
   tipo?: UsuarioTipo;
+  usuario?: {
+    nome?: string;
+    email?: string;
+    telefone?: string;
+    tipo?: UsuarioTipo;
+  };
 }
 
 export interface ClienteCadastroResponse {
@@ -59,7 +67,7 @@ export interface ArtistaCadastroPayload {
   telefone: string;
   nome_artista: string;
   genero_musical: string;
-  cache_min: number;
+  cache_min: string;
   descricao: string;
   portifolio: string;
 }
@@ -72,10 +80,16 @@ export interface Artista {
   telefone?: string;
   nome_artista?: string;
   genero_musical?: string;
-  cache_min?: number;
+  cache_min?: string;
   descricao?: string;
   portifolio?: string;
   tipo?: UsuarioTipo;
+  usuario?: {
+    nome?: string;
+    email?: string;
+    telefone?: string;
+    tipo?: UsuarioTipo;
+  };
 }
 
 export interface ArtistaCadastroResponse {
@@ -134,6 +148,7 @@ export interface EventoCreatePayload {
   id_usuario: UUID;
   titulo: string;
   descricao: string;
+  genero: string;
   data_inicio: ISODateTimeString;
   data_fim: ISODateTimeString;
   local: string;
@@ -145,8 +160,11 @@ export type EventoDTO = EventoCreatePayload;
 export interface Evento {
   id?: UUID;
   id_evento?: UUID;
+  idEvento?: UUID;
+  uuid?: UUID;
   titulo: string;
   descricao?: string;
+  genero?: string;
   data_inicio: ISODateTimeString;
   data_fim?: ISODateTimeString;
   local: string;
@@ -163,7 +181,9 @@ export interface Evento {
 export interface EventoArtista {
   id?: UUID;
   id_evento?: UUID;
+  idEvento?: UUID;
   id_artista?: UUID;
+  idArtista?: UUID;
   status?: string;
   artista?: Artista;
 }
@@ -201,20 +221,74 @@ export interface PropostaCasaDTO {
 
 export interface PropostaCasa {
   id?: UUID;
+  uuid?: UUID;
+
+  /**
+   * Campos possíveis de ID da proposta.
+   * Mantive vários nomes porque a API pode retornar o identificador
+   * com nomes diferentes dependendo do endpoint.
+   */
   id_proposta?: UUID;
+  idProposta?: UUID;
+  id_proposta_casa?: UUID;
+  idPropostaCasa?: UUID;
+  id_propostaCasa?: UUID;
+  proposta_id?: UUID;
+  propostaCasa_id?: UUID;
+
   id_artista: UUID;
+  idArtista?: UUID;
+
   id_casa_show?: UUID;
+  idCasaShow?: UUID;
+
   id_usuario?: UUID;
+  idUsuario?: UUID;
+
   id_evento: UUID;
+  idEvento?: UUID;
+
   data_proposta?: ISODateTimeString;
+  dataProposta?: ISODateTimeString;
+
   valor_ofertado: number | string;
+  valorOfertado?: number | string;
+  valor?: number | string;
+
   data_evento: ISODateTimeString;
+  dataEvento?: ISODateTimeString;
+
   termos?: string;
   status?: PropostaStatus;
+
   artista?: Artista;
+  Artista?: Artista;
+
   evento?: Evento;
+  Evento?: Evento;
+  event?: Evento;
+  Event?: Evento;
+
   casaDeShow?: CasaDeShow;
+  CasaDeShow?: CasaDeShow;
   casa?: CasaDeShow;
+
+  casa_nome?: string;
+  nome_casa?: string;
+  casa_show_nome?: string;
+
+  artista_nome?: string;
+  nome_artista?: string;
+
+  evento_titulo?: string;
+  nome_evento?: string;
+
+  evento_local?: string;
+  local_evento?: string;
+  local?: string;
+
+  genero?: string;
+  genero_musical?: string;
 }
 
 export interface PropostaCasaResponse {
@@ -225,6 +299,7 @@ export interface PropostaCasaResponse {
 export interface UpdatePropostaPayload {
   status?: PropostaStatus;
   valor_ofertado?: number | string;
+  valorOfertado?: number | string;
   termos?: string;
 }
 

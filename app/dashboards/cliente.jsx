@@ -13,7 +13,7 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { eventService } from '../../services/api';
+import { eventService, usersService } from '../../services/api';
 import {
   formatDateOnly,
   formatDateTime,
@@ -56,56 +56,244 @@ function formatMonthBadge(value) {
   };
 }
 
+function normalizeGenreValue(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function getGenreLabel(value) {
+  const normalized = normalizeGenreValue(value);
+
+  const map = {
+    forro: 'Forró',
+    trap: 'Trap',
+    funk: 'Funk',
+    sertanejo: 'Sertanejo',
+    pagode: 'Pagode',
+    samba: 'Samba',
+    rock: 'Rock',
+    pop: 'Pop',
+    eletronica: 'Eletrônica',
+    eletronico: 'Eletrônico',
+    mpb: 'MPB',
+    rap: 'Rap',
+    reggae: 'Reggae',
+    piseiro: 'Piseiro',
+    axe: 'Axé',
+    outros: 'Outros',
+  };
+
+  return map[normalized] || value || 'Sem gênero';
+}
+
+function parseClientPreferences(preferences) {
+  if (!preferences) return [];
+
+  if (Array.isArray(preferences)) {
+    return preferences
+      .map((item) => normalizeGenreValue(item))
+      .filter(Boolean);
+  }
+
+  if (typeof preferences !== 'string') return [];
+
+  return preferences
+    .split(/[;,/|]/)
+    .map((item) => normalizeGenreValue(item))
+    .filter(Boolean);
+}
+
+function eventMatchesClientGenres(eventItem, clientGenres) {
+  if (!clientGenres.length) return false;
+
+  const eventGenre = normalizeGenreValue(eventItem?.genero);
+
+  if (!eventGenre) return false;
+
+  return clientGenres.some((clientGenre) => {
+    if (!clientGenre) return false;
+
+    return (
+      eventGenre === clientGenre ||
+      eventGenre.includes(clientGenre) ||
+      clientGenre.includes(eventGenre)
+    );
+  });
+}
+
+function getPreferenceText(clientGenres) {
+  if (!clientGenres.length) return '';
+
+  return clientGenres.map(getGenreLabel).join(', ');
+}
+
+function normalizeClient(cliente = {}, session = {}) {
+  return {
+    ...cliente,
+    id: cliente.id || cliente.id_usuario || session.id_usuario || session.id || '',
+    nome: cliente.nome || cliente.usuario?.nome || session.nome || 'Cliente',
+    email: cliente.email || cliente.usuario?.email || session.email || '',
+    telefone: cliente.telefone || cliente.usuario?.telefone || '',
+    apelido: cliente.apelido || '',
+    preferencias: cliente.preferencias || session.preferencias || '',
+    data_nascimento: cliente.data_nascimento || '',
+  };
+}
+
 export default function ClientDashboardScreen() {
   const { session } = useAuth();
+  const [client, setClient] = useState(null);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const loadEvents = useCallback(async () => {
+  const clientId = useMemo(
+    () => session?.id_usuario || session?.id || '',
+    [session]
+  );
+
+  const loadDashboard = useCallback(async () => {
+    if (!clientId) {
+      setClient(normalizeClient({}, session || {}));
+      setEvents([]);
+      setError('Sessão inválida.');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
       setError('');
-      const response = await eventService.list({ page: 1, pageSize: 20 });
-      setEvents(Array.isArray(response) ? response.map(normalizeEvent) : []);
+
+      console.log('CLIENTE ID USADO NA DASHBOARD:', clientId);
+      console.log('SESSION DO CLIENTE:', JSON.stringify(session, null, 2));
+
+      const [clientResult, eventsResult] = await Promise.allSettled([
+        usersService.getCliente(clientId),
+        eventService.list({ page: 1, pageSize: 50 }),
+      ]);
+
+      if (clientResult.status === 'fulfilled') {
+        console.log('CLIENTE DA API:', JSON.stringify(clientResult.value, null, 2));
+
+        setClient(normalizeClient(clientResult.value, session));
+      } else {
+        console.log('ERRO AO BUSCAR CLIENTE:', clientResult.reason);
+
+        setClient(normalizeClient({}, session));
+      }
+
+      if (eventsResult.status === 'fulfilled') {
+        console.log('EVENTOS DO CLIENTE - API:', JSON.stringify(eventsResult.value, null, 2));
+
+        const normalizedEvents = Array.isArray(eventsResult.value)
+          ? eventsResult.value.map(normalizeEvent)
+          : [];
+
+        console.log(
+          'EVENTOS DO CLIENTE - NORMALIZADOS:',
+          JSON.stringify(normalizedEvents, null, 2)
+        );
+
+        setEvents(normalizedEvents);
+      } else {
+        console.log('ERRO AO BUSCAR EVENTOS DO CLIENTE:', eventsResult.reason);
+
+        setEvents([]);
+      }
+
+      if (clientResult.status === 'rejected' || eventsResult.status === 'rejected') {
+        setError('Alguns dados nao puderam ser carregados. Puxe para atualizar.');
+      }
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel carregar eventos.');
+      console.log('ERRO AO CARREGAR DASHBOARD DO CLIENTE:', requestError);
+
+      setError(requestError?.message || 'Nao foi possivel carregar eventos.');
+      setEvents([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [clientId, session]);
 
   useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
+    loadDashboard();
+  }, [loadDashboard]);
+
+  const clientData = client || normalizeClient({}, session || {});
+
+  const clientGenres = useMemo(() => {
+    const rawPreferences =
+      clientData?.preferencias ||
+      session?.preferencias ||
+      '';
+
+    const parsed = parseClientPreferences(rawPreferences);
+
+    console.log('PREFERENCIAS DO CLIENTE - RAW:', rawPreferences);
+    console.log('PREFERENCIAS DO CLIENTE - NORMALIZADAS:', parsed);
+
+    return parsed;
+  }, [clientData?.preferencias, session?.preferencias]);
 
   const dashboard = useMemo(() => {
     const sortedEvents = [...events].sort((a, b) => {
       const dateA = parseApiDate(a.data_inicio)?.getTime() || 0;
       const dateB = parseApiDate(b.data_inicio)?.getTime() || 0;
+
       return dateA - dateB;
     });
 
     const now = Date.now();
+
     const upcomingEvents = sortedEvents.filter((eventItem) => {
       const date = parseApiDate(eventItem.data_inicio);
+
       return date ? date.getTime() >= now : true;
     });
 
+    const preferenceMatches = upcomingEvents.filter((eventItem) =>
+      eventMatchesClientGenres(eventItem, clientGenres)
+    );
+
+    const nonMatchingUpcoming = upcomingEvents.filter(
+      (eventItem) => !eventMatchesClientGenres(eventItem, clientGenres)
+    );
+
+    const prioritizedEvents =
+      clientGenres.length > 0
+        ? [...preferenceMatches, ...nonMatchingUpcoming]
+        : upcomingEvents;
+
+    const recommendationEvents =
+      clientGenres.length > 0 ? preferenceMatches : [];
+
+    console.log(
+      'EVENTOS QUE BATEM COM AS PREFERENCIAS:',
+      JSON.stringify(preferenceMatches, null, 2)
+    );
+
     return {
-      highlighted: upcomingEvents.slice(0, 3),
-      mainEvent: upcomingEvents[0] || sortedEvents[0] || null,
-      recent: sortedEvents.slice(0, 4),
+      preferred: recommendationEvents.slice(0, 10),
+      highlighted: prioritizedEvents.slice(0, 3),
+      mainEvent: prioritizedEvents[0] || sortedEvents[0] || null,
+      recent: prioritizedEvents.slice(0, 4),
+      hasPreferences: clientGenres.length > 0,
+      hasMatches: preferenceMatches.length > 0,
+      preferenceText: getPreferenceText(clientGenres),
     };
-  }, [events]);
+  }, [events, clientGenres]);
 
   async function handleRefresh() {
     setRefreshing(true);
-    await loadEvents();
+    await loadDashboard();
   }
 
-  const nome = session?.nome || 'Cliente';
+  const nome = clientData?.nome || session?.nome || 'Cliente';
 
   if (loading) {
     return (
@@ -117,6 +305,8 @@ export default function ClientDashboardScreen() {
       </SafeAreaView>
     );
   }
+
+  const recommendationList = dashboard.preferred;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -154,15 +344,15 @@ export default function ClientDashboardScreen() {
             <Text style={styles.heroTitle}>Ola, {nome}!</Text>
 
             <Text style={styles.heroSubtitle}>
-              Descubra eventos carregados direto da API.
+              Eventos recomendados com base nos seus gêneros favoritos.
             </Text>
 
-            <Text style={styles.heroLocation}>{session?.email}</Text>
+            <Text style={styles.heroLocation}>{clientData?.email || session?.email}</Text>
           </View>
         </View>
 
         {error ? (
-          <TouchableOpacity style={styles.errorCard} activeOpacity={0.85} onPress={loadEvents}>
+          <TouchableOpacity style={styles.errorCard} activeOpacity={0.85} onPress={loadDashboard}>
             <Ionicons name="warning-outline" size={18} color={colors.error} />
             <Text style={styles.errorText}>{error}</Text>
           </TouchableOpacity>
@@ -189,12 +379,116 @@ export default function ClientDashboardScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Eventos em destaque</Text>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="sparkles-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Recomendações por gênero</Text>
+          </View>
+
+          {!dashboard.hasPreferences ? (
+            <View style={styles.noPreferencesBox}>
+              <Ionicons name="musical-notes-outline" size={24} color={colors.primary} />
+
+              <Text style={styles.noPreferencesTitle}>
+                Você ainda não tem preferências musicais.
+              </Text>
+
+              <Text style={styles.noPreferencesText}>
+                Caso queira receber recomendações personalizadas, adicione seus gêneros favoritos na edição de perfil.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.profileEditShortcut}
+                activeOpacity={0.85}
+                onPress={() => router.push('/(tabs)/profile')}
+              >
+                <Ionicons name="create-outline" size={16} color={colors.text} />
+                <Text style={styles.profileEditShortcutText}>Editar perfil</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.helperText}>
+                Baseado em: {dashboard.preferenceText}
+              </Text>
+
+              {!dashboard.hasMatches ? (
+                <Text style={styles.warningText}>
+                  Ainda não encontramos eventos com os gêneros marcados no seu perfil.
+                </Text>
+              ) : null}
+
+              {recommendationList.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.preferenceRow}
+                >
+                  {recommendationList.map((eventItem) => {
+                    const badge = formatMonthBadge(eventItem.data_inicio);
+                    const isRecommended = eventMatchesClientGenres(eventItem, clientGenres);
+
+                    return (
+                      <TouchableOpacity
+                        key={getEventId(eventItem)}
+                        style={styles.preferenceItem}
+                        activeOpacity={0.85}
+                        onPress={() => router.push('/(tabs)/events')}
+                      >
+                        <View style={styles.preferenceImageBox}>
+                          <Image
+                            source={{ uri: eventItem.foto_evento || FALLBACK_EVENT_IMAGE }}
+                            style={styles.preferenceImage}
+                          />
+
+                          {isRecommended ? (
+                            <View style={styles.recommendedBadge}>
+                              <Ionicons name="star" size={11} color="#FFF" />
+                              <Text style={styles.recommendedBadgeText}>Match</Text>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <Text style={styles.preferenceTitle} numberOfLines={1}>
+                          {eventItem.titulo}
+                        </Text>
+
+                        <View style={styles.smallMetaRow}>
+                          <Ionicons name="musical-notes-outline" size={12} color={colors.primary} />
+                          <Text style={styles.preferenceGenre} numberOfLines={1}>
+                            {getGenreLabel(eventItem.genero)}
+                          </Text>
+                        </View>
+
+                        <View style={styles.smallMetaRow}>
+                          <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                          <Text style={styles.preferenceDate}>
+                            {badge.day} {badge.month}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <Text style={styles.emptyText}>
+                  Nenhum evento recomendado no momento.
+                </Text>
+              )}
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="flame-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Eventos em destaque</Text>
+          </View>
 
           {dashboard.highlighted.length > 0 ? (
             <View style={styles.highlightRow}>
               {dashboard.highlighted.map((eventItem) => {
                 const badge = formatMonthBadge(eventItem.data_inicio);
+                const isRecommended = eventMatchesClientGenres(eventItem, clientGenres);
 
                 return (
                   <TouchableOpacity
@@ -203,13 +497,25 @@ export default function ClientDashboardScreen() {
                     activeOpacity={0.85}
                     onPress={() => router.push('/(tabs)/events')}
                   >
-                    <Image
-                      source={{ uri: eventItem.foto_evento || FALLBACK_EVENT_IMAGE }}
-                      style={styles.highlightImage}
-                    />
+                    <View style={styles.highlightImageBox}>
+                      <Image
+                        source={{ uri: eventItem.foto_evento || FALLBACK_EVENT_IMAGE }}
+                        style={styles.highlightImage}
+                      />
+
+                      {isRecommended ? (
+                        <View style={styles.highlightMatchDot} />
+                      ) : null}
+                    </View>
+
                     <Text style={styles.highlightTitle} numberOfLines={1}>
                       {eventItem.titulo}
                     </Text>
+
+                    <Text style={styles.highlightGenre} numberOfLines={1}>
+                      {getGenreLabel(eventItem.genero)}
+                    </Text>
+
                     <Text style={styles.highlightDate}>
                       {badge.day} {badge.month}
                     </Text>
@@ -223,7 +529,10 @@ export default function ClientDashboardScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Proximo evento</Text>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Proximo evento recomendado</Text>
+          </View>
 
           {dashboard.mainEvent ? (
             <TouchableOpacity
@@ -240,6 +549,13 @@ export default function ClientDashboardScreen() {
                 <Text style={styles.mainEventTitle}>{dashboard.mainEvent.titulo}</Text>
 
                 <Ionicons name="chevron-forward" size={26} color={colors.text} />
+              </View>
+
+              <View style={styles.metaRow}>
+                <Ionicons name="musical-notes-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.mainEventInfo}>
+                  {getGenreLabel(dashboard.mainEvent.genero)}
+                </Text>
               </View>
 
               <View style={styles.metaRow}>
@@ -264,11 +580,15 @@ export default function ClientDashboardScreen() {
         </View>
 
         <View style={styles.activityWrapper}>
-          <Text style={styles.activitySectionTitle}>Atividade recente</Text>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="pulse-outline" size={18} color={colors.primary} />
+            <Text style={styles.activitySectionTitle}>Atividade recente</Text>
+          </View>
 
           {dashboard.recent.length > 0 ? (
             dashboard.recent.map((eventItem) => {
               const badge = formatMonthBadge(eventItem.data_inicio);
+              const isRecommended = eventMatchesClientGenres(eventItem, clientGenres);
 
               return (
                 <TouchableOpacity
@@ -283,8 +603,17 @@ export default function ClientDashboardScreen() {
                   </View>
 
                   <View style={styles.activityTextArea}>
-                    <Text style={styles.activityTitle}>{eventItem.titulo}</Text>
-                    <Text style={styles.activityMeta}>{eventItem.local}</Text>
+                    <View style={styles.activityTitleRow}>
+                      <Text style={styles.activityTitle}>{eventItem.titulo}</Text>
+
+                      {isRecommended ? (
+                        <Ionicons name="star" size={13} color={colors.primary} />
+                      ) : null}
+                    </View>
+
+                    <Text style={styles.activityMeta}>
+                      {getGenreLabel(eventItem.genero)} • {eventItem.local}
+                    </Text>
                   </View>
 
                   <Text style={styles.activityTime}>
@@ -439,11 +768,122 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     ...shadows.small,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
   sectionTitle: {
     color: colors.text,
     fontWeight: '700',
-    marginBottom: spacing.md,
+    marginLeft: 8,
     ...typography.body,
+  },
+  helperText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  warningText: {
+    ...typography.bodySmall,
+    color: '#F59E0B',
+    marginBottom: spacing.md,
+  },
+  noPreferencesBox: {
+    backgroundColor: '#101728',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
+  noPreferencesTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    textAlign: 'center',
+  },
+  noPreferencesText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  profileEditShortcut: {
+    marginTop: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  profileEditShortcutText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
+    marginLeft: 6,
+  },
+  preferenceRow: {
+    paddingRight: spacing.sm,
+  },
+  preferenceItem: {
+    width: 132,
+    marginRight: spacing.md,
+  },
+  preferenceImageBox: {
+    width: 132,
+    height: 132,
+    borderRadius: 18,
+    marginBottom: 8,
+  },
+  preferenceImage: {
+    width: 132,
+    height: 132,
+    borderRadius: 18,
+    backgroundColor: '#101728',
+  },
+  recommendedBadge: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recommendedBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  preferenceTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  smallMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  preferenceGenre: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+    flex: 1,
+  },
+  preferenceDate: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   highlightRow: {
     flexDirection: 'row',
@@ -453,18 +893,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '30%',
   },
-  highlightImage: {
+  highlightImageBox: {
     width: 72,
     height: 72,
     borderRadius: 36,
     marginBottom: 8,
+  },
+  highlightImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: '#101728',
+  },
+  highlightMatchDot: {
+    position: 'absolute',
+    right: 2,
+    bottom: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.backgroundCard,
   },
   highlightTitle: {
     color: colors.text,
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  highlightGenre: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 2,
   },
   highlightDate: {
     color: colors.textSecondary,
@@ -532,7 +995,7 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.text,
     fontSize: 18,
-    marginBottom: spacing.md,
+    marginLeft: 8,
   },
   activityCard: {
     backgroundColor: colors.backgroundCard,
@@ -569,11 +1032,17 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: spacing.sm,
   },
+  activityTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   activityTitle: {
     ...typography.body,
     color: colors.text,
     fontWeight: '700',
     fontSize: 16,
+    marginRight: 6,
+    flexShrink: 1,
   },
   activityMeta: {
     ...typography.caption,

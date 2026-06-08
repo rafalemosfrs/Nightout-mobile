@@ -35,6 +35,13 @@ import {
 } from '../../constants/theme';
 
 const STATUS_OPTIONS = ['TODOS', 'ATIVOS', 'FINALIZADOS'];
+const EVENT_GENRES = [
+  { label: 'Forró', value: 'forro' },
+  { label: 'Trap', value: 'trap' },
+  { label: 'Funk', value: 'funk' },
+  { label: 'Sertanejo', value: 'sertanejo' },
+  { label: 'Outros', value: 'outros' },
+];
 const WEEK_DAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 const MONTH_NAMES = [
   'Janeiro',
@@ -56,6 +63,7 @@ const MINUTES = Array.from({ length: 12 }, (_, index) => index * 5);
 const INITIAL_FORM = {
   titulo: '',
   descricao: '',
+  genero: '',
   data_inicio: null,
   data_fim: null,
   local: '',
@@ -91,6 +99,11 @@ function getStatusStyles(status) {
     text: styles.statusFinishedText,
     label: 'Finalizado',
   };
+}
+
+function getGenreLabel(value) {
+  const found = EVENT_GENRES.find((item) => item.value === value);
+  return found?.label || 'Selecionar gênero';
 }
 
 function buildCalendarMatrix(month, year) {
@@ -140,6 +153,7 @@ function buildCreatedEvent(createdEvent, payload) {
     id_usuario: response.id_usuario || response.id_casa_show || payload.id_usuario,
     titulo: response.titulo || payload.titulo,
     descricao: response.descricao || payload.descricao,
+    genero: response.genero || payload.genero,
     data_inicio: response.data_inicio || response.data_evento || payload.data_inicio,
     data_fim: response.data_fim || payload.data_fim,
     local: response.local || response.endereco || payload.local,
@@ -320,6 +334,7 @@ export default function CasaShowEventosScreen() {
   const [selectedStatus, setSelectedStatus] = useState('TODOS');
   const [showFilters, setShowFilters] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isGenreOpen, setIsGenreOpen] = useState(false);
   const [form, setForm] = useState(INITIAL_FORM);
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -371,6 +386,7 @@ export default function CasaShowEventosScreen() {
     return [...events]
       .filter((item) => {
         const lifecycleStatus = getEventLifecycleStatus(item);
+
         const matchesStatus =
           selectedStatus === 'TODOS' ||
           (selectedStatus === 'ATIVOS' && lifecycleStatus === 'ATIVO') ||
@@ -402,6 +418,7 @@ export default function CasaShowEventosScreen() {
     setForm(INITIAL_FORM);
     setFormError('');
     setPickerTarget(null);
+    setIsGenreOpen(false);
   }
 
   function openCreateModal() {
@@ -413,6 +430,7 @@ export default function CasaShowEventosScreen() {
     setIsModalVisible(false);
     setFormError('');
     setPickerTarget(null);
+    setIsGenreOpen(false);
   }
 
   async function handleRefresh() {
@@ -430,6 +448,11 @@ export default function CasaShowEventosScreen() {
 
     if (!form.descricao.trim()) {
       setFormError('Informe a descricao do evento.');
+      return;
+    }
+
+    if (!form.genero) {
+      setFormError('Selecione o gênero do evento.');
       return;
     }
 
@@ -466,6 +489,7 @@ export default function CasaShowEventosScreen() {
         id_usuario: casaId,
         titulo: form.titulo.trim(),
         descricao: form.descricao.trim(),
+        genero: form.genero,
         data_inicio: form.data_inicio.toISOString(),
         data_fim: form.data_fim.toISOString(),
         local: form.local.trim(),
@@ -749,6 +773,57 @@ export default function CasaShowEventosScreen() {
                 multiline
                 textAlignVertical="top"
               />
+
+              <Text style={styles.fieldLabel}>Gênero</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                activeOpacity={0.85}
+                onPress={() => setIsGenreOpen((prev) => !prev)}
+              >
+                <Text style={styles.pickerButtonText}>
+                  {form.genero ? getGenreLabel(form.genero) : 'Selecionar gênero'}
+                </Text>
+                <Ionicons
+                  name={isGenreOpen ? 'chevron-up-outline' : 'chevron-down-outline'}
+                  size={18}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+
+              {isGenreOpen ? (
+                <View style={styles.genreOptionsWrapper}>
+                  {EVENT_GENRES.map((genre) => {
+                    const isSelected = form.genero === genre.value;
+
+                    return (
+                      <TouchableOpacity
+                        key={genre.value}
+                        style={[
+                          styles.genreOption,
+                          isSelected && styles.genreOptionSelected,
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          updateFormField('genero', genre.value);
+                          setIsGenreOpen(false);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.genreOptionText,
+                            isSelected && styles.genreOptionTextSelected,
+                          ]}
+                        >
+                          {genre.label}
+                        </Text>
+                        {isSelected ? (
+                          <Ionicons name="checkmark" size={16} color={colors.primary} />
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : null}
 
               <Text style={styles.fieldLabel}>Data / Hora de Inicio</Text>
               <TouchableOpacity
@@ -1205,6 +1280,34 @@ const styles = StyleSheet.create({
     color: colors.text,
     flex: 1,
     marginRight: spacing.sm,
+  },
+  genreOptionsWrapper: {
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#101728',
+    overflow: 'hidden',
+  },
+  genreOption: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1B2233',
+  },
+  genreOptionSelected: {
+    backgroundColor: 'rgba(0, 102, 255, 0.12)',
+  },
+  genreOptionText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  genreOptionTextSelected: {
+    color: colors.primary,
   },
   formErrorText: {
     ...typography.bodySmall,
