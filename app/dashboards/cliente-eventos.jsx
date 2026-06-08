@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -35,6 +36,7 @@ const FALLBACK_EVENT_IMAGE =
 
 const WHATSAPP_NUMBER = '558897140476';
 const WHATSAPP_MESSAGE = 'Quero saber mais informações do evento';
+const BANNER_AUTO_PLAY_INTERVAL = 7000;
 
 function normalizeText(value) {
   return String(value || '')
@@ -372,6 +374,13 @@ async function enrichEventWithCasa(eventItem, acceptedProposalsForEvent = []) {
 
 export default function PublicEventsScreen() {
   const { session } = useAuth();
+  const { width } = useWindowDimensions();
+
+  const bannerScrollRef = useRef(null);
+
+  const bannerCardWidth = useMemo(() => {
+    return Math.max(280, width - spacing.lg * 2);
+  }, [width]);
 
   const [events, setEvents] = useState([]);
   const [acceptedProposals, setAcceptedProposals] = useState([]);
@@ -525,8 +534,32 @@ export default function PublicEventsScreen() {
   useEffect(() => {
     if (activeBanner >= preferenceEvents.length) {
       setActiveBanner(0);
+      bannerScrollRef.current?.scrollTo({
+        x: 0,
+        animated: false,
+      });
     }
   }, [activeBanner, preferenceEvents.length]);
+
+  useEffect(() => {
+    if (preferenceEvents.length <= 1) return undefined;
+
+    const interval = setInterval(() => {
+      setActiveBanner((currentIndex) => {
+        const nextIndex =
+          currentIndex >= preferenceEvents.length - 1 ? 0 : currentIndex + 1;
+
+        bannerScrollRef.current?.scrollTo({
+          x: nextIndex * bannerCardWidth,
+          animated: true,
+        });
+
+        return nextIndex;
+      });
+    }, BANNER_AUTO_PLAY_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [bannerCardWidth, preferenceEvents.length]);
 
   const eventTypes = useMemo(() => {
     const values = events.map(getEventType).filter(Boolean);
@@ -657,12 +690,12 @@ export default function PublicEventsScreen() {
             </View>
 
             <ScrollView
+              ref={bannerScrollRef}
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               onScroll={(event) => {
-                const slideSize = event.nativeEvent.layoutMeasurement.width;
-                const index = event.nativeEvent.contentOffset.x / slideSize;
+                const index = event.nativeEvent.contentOffset.x / bannerCardWidth;
                 const roundIndex = Math.round(index);
 
                 setActiveBanner(roundIndex);
@@ -676,7 +709,7 @@ export default function PublicEventsScreen() {
                   <TouchableOpacity
                     key={`banner-${eventId}`}
                     activeOpacity={0.9}
-                    style={styles.bannerCard}
+                    style={[styles.bannerCard, { width: bannerCardWidth }]}
                     onPress={() => setSelectedEventId(eventId)}
                   >
                     <Image
@@ -876,7 +909,7 @@ export default function PublicEventsScreen() {
                             ))
                           ) : (
                             <Text style={styles.emptyText}>
-                              Nenhum artista confirmado retornado pela API.
+                              Nenhum artista confirmado.
                             </Text>
                           )}
                         </View>
@@ -1029,11 +1062,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.sm,
+    width: '100%',
   },
   filterInput: {
     flex: 1,
+    minWidth: 0,
     minHeight: 44,
-    maxWidth: 150,
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1191,6 +1225,7 @@ const styles = StyleSheet.create({
   },
   bannerContainer: {
     marginBottom: spacing.lg,
+    width: '100%',
   },
   bannerHeader: {
     flexDirection: 'row',
@@ -1215,9 +1250,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   bannerCard: {
-    width: 340,
     height: 200,
-    marginRight: spacing.md,
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
     backgroundColor: colors.backgroundCard,
@@ -1267,6 +1300,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: spacing.sm,
+    flexWrap: 'wrap',
   },
   paginationDot: {
     width: 8,
@@ -1274,6 +1308,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#555',
     marginHorizontal: 4,
+    marginBottom: 4,
   },
   paginationDotActive: {
     width: 18,
