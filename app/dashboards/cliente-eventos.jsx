@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -14,12 +15,11 @@ import {
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { eventService, proposalService, usersService } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   formatDateTime,
   getEventId,
-  isAcceptedProposal,
   normalizeEvent,
-  normalizeProposal,
   parseApiDate,
 } from '../../utils/casaShowData';
 import {
@@ -33,58 +33,110 @@ import {
 const FALLBACK_EVENT_IMAGE =
   'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=80';
 
+const WHATSAPP_NUMBER = '558897140476';
+const WHATSAPP_MESSAGE = 'Quero saber mais informações do evento';
+
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeGenreValue(value) {
+  const normalized = normalizeText(value);
+
+  const genreMap = {
+    forro: 'forro',
+    forró: 'forro',
+    trap: 'trap',
+    funk: 'funk',
+    sertanejo: 'sertanejo',
+    pagode: 'pagode',
+    samba: 'samba',
+    rock: 'rock',
+    pop: 'pop',
+    eletronica: 'eletronica',
+    eletronico: 'eletronica',
+    eletrônico: 'eletronica',
+    eletrônica: 'eletronica',
+    mpb: 'mpb',
+    rap: 'rap',
+    reggae: 'reggae',
+    piseiro: 'piseiro',
+    axe: 'axe',
+    axé: 'axe',
+    outros: 'outros',
+    outro: 'outros',
+  };
+
+  return genreMap[normalized] || normalized;
+}
+
+function parseClientPreferences(preferences) {
+  if (!preferences) return [];
+
+  if (Array.isArray(preferences)) {
+    return preferences.map(normalizeGenreValue).filter(Boolean);
+  }
+
+  if (typeof preferences !== 'string') return [];
+
+  return preferences
+    .split(/[;,/|]/)
+    .map(normalizeGenreValue)
+    .filter(Boolean);
+}
+
 function getEventType(eventItem) {
   return (
     eventItem.tipo ||
     eventItem.categoria ||
-    eventItem.genero_musical ||
     eventItem.genero ||
+    eventItem.genero_musical ||
     eventItem.status ||
     'Evento'
   );
 }
 
+function getEventGenres(eventItem) {
+  return [
+    eventItem?.genero,
+    eventItem?.genero_musical,
+    eventItem?.tipo,
+    eventItem?.categoria,
+  ]
+    .map(normalizeGenreValue)
+    .filter(Boolean);
+}
+
+function eventMatchesClientGenres(eventItem, clientGenres) {
+  if (!clientGenres.length) return false;
+
+  const eventGenres = getEventGenres(eventItem);
+
+  return clientGenres.some((genre) => eventGenres.includes(genre));
+}
+
 function normalizeStatus(status) {
-  return String(status || 'PENDENTE')
+  return String(status || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase();
 }
 
-function isConfirmedArtist(eventArtist) {
-  const status = normalizeStatus(eventArtist?.status || 'CONFIRMADO');
+function isAcceptedStatus(status) {
+  const normalized = normalizeStatus(status);
 
-  return ['ACEITA', 'ACEITO', 'CONFIRMADO', 'CONFIRMADA', 'APROVADO', 'APROVADA'].includes(
-    status
-  );
-}
-
-function getArtistNameFromObject(artistItem) {
-  const artista = artistItem?.artista || artistItem?.Artista || artistItem || {};
-  const usuario = artista?.usuario || {};
-
-  return (
-    artista.nome_artista ||
-    artista.nome ||
-    usuario.nome ||
-    artista.email ||
-    usuario.email ||
-    'Artista confirmado'
-  );
-}
-
-function getCasaNameFromObject(casaItem) {
-  const casa = casaItem?.casaDeShow || casaItem?.CasaDeShow || casaItem?.casa || casaItem || {};
-  const usuario = casa?.usuario || {};
-
-  return (
-    casa.nome_fantasia ||
-    casa.nome ||
-    usuario.nome ||
-    casa.email ||
-    usuario.email ||
-    'Casa de show'
-  );
+  return [
+    'ACEITA',
+    'ACEITO',
+    'CONFIRMADO',
+    'CONFIRMADA',
+    'APROVADO',
+    'APROVADA',
+  ].includes(normalized);
 }
 
 function getProposalEventId(proposal) {
@@ -93,6 +145,8 @@ function getProposalEventId(proposal) {
     proposal?.idEvento ||
     proposal?.evento?.id_evento ||
     proposal?.evento?.id ||
+    proposal?.Evento?.id_evento ||
+    proposal?.Evento?.id ||
     ''
   );
 }
@@ -103,6 +157,8 @@ function getProposalArtistId(proposal) {
     proposal?.idArtista ||
     proposal?.artista?.id_usuario ||
     proposal?.artista?.id ||
+    proposal?.Artista?.id_usuario ||
+    proposal?.Artista?.id ||
     ''
   );
 }
@@ -113,36 +169,79 @@ function getProposalCasaId(proposal) {
     proposal?.idCasaShow ||
     proposal?.casaDeShow?.id_usuario ||
     proposal?.casaDeShow?.id ||
+    proposal?.CasaDeShow?.id_usuario ||
+    proposal?.CasaDeShow?.id ||
     proposal?.casa?.id_usuario ||
     proposal?.casa?.id ||
+    proposal?.evento?.id_casa_show ||
+    proposal?.evento?.id_usuario ||
+    proposal?.Evento?.id_casa_show ||
+    proposal?.Evento?.id_usuario ||
     ''
   );
 }
 
-function getEventCasaId(eventItem) {
+function getCasaIdFromEvent(eventItem) {
   return (
     eventItem?.id_casa_show ||
     eventItem?.idCasaShow ||
     eventItem?.id_usuario ||
-    eventItem?.idUsuario ||
     eventItem?.casaDeShow?.id_usuario ||
     eventItem?.casaDeShow?.id ||
+    eventItem?.CasaDeShow?.id_usuario ||
+    eventItem?.CasaDeShow?.id ||
     eventItem?.casa?.id_usuario ||
     eventItem?.casa?.id ||
     ''
   );
 }
 
-function getArtistNameFromProposal(proposal) {
+function getArtistNameFromObject(artistItem) {
+  const artista = artistItem?.artista || artistItem?.Artista || artistItem || {};
+
   return (
-    proposal?.artista_nome ||
-    proposal?.nome_artista ||
-    proposal?.artista?.nome_artista ||
-    proposal?.artista?.nome ||
-    proposal?.artista?.usuario?.nome ||
-    proposal?.Artista?.nome_artista ||
-    proposal?.Artista?.nome ||
-    proposal?.Artista?.usuario?.nome ||
+    artista?.nome_artista ||
+    artista?.nome ||
+    artista?.usuario?.nome ||
+    artista?.email ||
+    artista?.usuario?.email ||
+    'Artista confirmado'
+  );
+}
+
+function getCasaNameFromObject(casaItem) {
+  const casa =
+    casaItem?.casaDeShow ||
+    casaItem?.CasaDeShow ||
+    casaItem?.casa ||
+    casaItem ||
+    {};
+  const usuario = casa?.usuario || {};
+
+  return (
+    casa?.nome_fantasia ||
+    casa?.nome ||
+    usuario?.nome ||
+    casa?.email ||
+    usuario?.email ||
+    ''
+  );
+}
+
+function getCasaNameFromEvent(eventItem) {
+  return (
+    eventItem?.casa_nome ||
+    eventItem?.nome_casa ||
+    eventItem?.casa_show_nome ||
+    eventItem?.casaDeShow?.nome_fantasia ||
+    eventItem?.casaDeShow?.nome ||
+    eventItem?.casaDeShow?.usuario?.nome ||
+    eventItem?.CasaDeShow?.nome_fantasia ||
+    eventItem?.CasaDeShow?.nome ||
+    eventItem?.CasaDeShow?.usuario?.nome ||
+    eventItem?.casa?.nome_fantasia ||
+    eventItem?.casa?.nome ||
+    eventItem?.casa?.usuario?.nome ||
     ''
   );
 }
@@ -155,6 +254,9 @@ function getCasaNameFromProposal(proposal) {
     proposal?.casaDeShow?.nome_fantasia ||
     proposal?.casaDeShow?.nome ||
     proposal?.casaDeShow?.usuario?.nome ||
+    proposal?.CasaDeShow?.nome_fantasia ||
+    proposal?.CasaDeShow?.nome ||
+    proposal?.CasaDeShow?.usuario?.nome ||
     proposal?.casa?.nome_fantasia ||
     proposal?.casa?.nome ||
     proposal?.casa?.usuario?.nome ||
@@ -162,17 +264,33 @@ function getCasaNameFromProposal(proposal) {
   );
 }
 
+function getArtistName(eventArtist) {
+  return getArtistNameFromObject(eventArtist);
+}
+
+function isConfirmedArtist(eventArtist) {
+  const status = String(eventArtist?.status || 'CONFIRMADO').toUpperCase();
+
+  return [
+    'ACEITA',
+    'ACEITO',
+    'CONFIRMADO',
+    'CONFIRMADA',
+    'APROVADO',
+    'APROVADA',
+  ].includes(status);
+}
+
 async function enrichAcceptedProposal(proposal) {
-  const normalizedProposal = normalizeProposal(proposal);
-  const artistId = getProposalArtistId(normalizedProposal);
-  const casaId = getProposalCasaId(normalizedProposal);
+  const artistId = getProposalArtistId(proposal);
+  const casaId = getProposalCasaId(proposal);
 
   const [artistResult, casaResult] = await Promise.allSettled([
     artistId ? usersService.getArtist(artistId) : Promise.resolve(null),
     casaId ? usersService.getCasaShow(casaId) : Promise.resolve(null),
   ]);
 
-  const artista =
+  const artist =
     artistResult.status === 'fulfilled' && artistResult.value
       ? artistResult.value
       : null;
@@ -183,31 +301,55 @@ async function enrichAcceptedProposal(proposal) {
       : null;
 
   return {
-    ...normalizedProposal,
-    artista,
-    casaDeShow: casa,
+    ...proposal,
+    id_evento: getProposalEventId(proposal),
+    id_artista: artistId,
+    id_casa_show: casaId,
+    artista: artist || proposal?.artista || proposal?.Artista || null,
+    casaDeShow:
+      casa || proposal?.casaDeShow || proposal?.CasaDeShow || proposal?.casa || null,
     artista_nome:
-      getArtistNameFromObject(artista) ||
-      getArtistNameFromProposal(normalizedProposal) ||
+      getArtistNameFromObject(artist) ||
+      getArtistNameFromObject(proposal?.artista || proposal?.Artista) ||
       'Artista confirmado',
     casa_nome:
       getCasaNameFromObject(casa) ||
-      getCasaNameFromProposal(normalizedProposal) ||
+      getCasaNameFromProposal(proposal) ||
       'Casa de show',
   };
 }
 
-async function enrichEventWithCasa(eventItem, proposalsForEvent = []) {
-  const normalizedEvent = normalizeEvent(eventItem);
+async function enrichEventWithCasa(eventItem, acceptedProposalsForEvent = []) {
+  const eventCasaName = getCasaNameFromEvent(eventItem);
 
-  const eventCasaId = getEventCasaId(normalizedEvent);
-  const proposalCasaId = proposalsForEvent.length > 0 ? getProposalCasaId(proposalsForEvent[0]) : '';
-  const casaId = eventCasaId || proposalCasaId;
+  if (eventCasaName) {
+    return {
+      ...eventItem,
+      casa_nome: eventCasaName,
+    };
+  }
+
+  const proposalCasaName = acceptedProposalsForEvent.find(
+    (proposal) => proposal.casa_nome
+  )?.casa_nome;
+
+  if (proposalCasaName) {
+    return {
+      ...eventItem,
+      casa_nome: proposalCasaName,
+    };
+  }
+
+  const casaId =
+    getCasaIdFromEvent(eventItem) ||
+    acceptedProposalsForEvent.find((proposal) => proposal.id_casa_show)
+      ?.id_casa_show ||
+    '';
 
   if (!casaId) {
     return {
-      ...normalizedEvent,
-      casa_nome: 'Casa de show',
+      ...eventItem,
+      casa_nome: '',
     };
   }
 
@@ -215,26 +357,25 @@ async function enrichEventWithCasa(eventItem, proposalsForEvent = []) {
     const casa = await usersService.getCasaShow(casaId);
 
     return {
-      ...normalizedEvent,
-      casaDeShow: casa,
+      ...eventItem,
       casa_nome: getCasaNameFromObject(casa),
     };
   } catch (requestError) {
-    console.log('ERRO AO BUSCAR CASA DO EVENTO:', requestError);
+    console.log('ERRO AO BUSCAR CASA DO EVENTO PUBLICO:', requestError);
 
     return {
-      ...normalizedEvent,
-      casa_nome:
-        getCasaNameFromProposal(proposalsForEvent[0]) ||
-        getCasaNameFromObject(normalizedEvent?.casaDeShow) ||
-        'Casa de show',
+      ...eventItem,
+      casa_nome: '',
     };
   }
 }
 
 export default function PublicEventsScreen() {
+  const { session } = useAuth();
+
   const [events, setEvents] = useState([]);
   const [acceptedProposals, setAcceptedProposals] = useState([]);
+  const [clientPreferences, setClientPreferences] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -243,80 +384,104 @@ export default function PublicEventsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [activeBanner, setActiveBanner] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const clientId = useMemo(
+    () => session?.id_usuario || session?.id || '',
+    [session]
+  );
 
   const loadEvents = useCallback(async () => {
     try {
       setError('');
 
-      const [eventsResult, proposalsResult] = await Promise.allSettled([
-        eventService.list({ page: 1, pageSize: 50 }),
-        proposalService.list(),
-      ]);
+      console.log('CLIENTE ID USADO EM EVENTOS PUBLICOS:', clientId);
 
-      let enrichedAcceptedProposals = [];
+      const [eventsResult, proposalsResult, clientResult] =
+        await Promise.allSettled([
+          eventService.list({ page: 1, pageSize: 50 }),
+          proposalService.list(),
+          clientId ? usersService.getCliente(clientId) : Promise.resolve(null),
+        ]);
 
-      if (proposalsResult.status === 'fulfilled') {
-        console.log('PROPOSTAS PUBLICAS - API:', JSON.stringify(proposalsResult.value, null, 2));
+      const eventList =
+        eventsResult.status === 'fulfilled' && Array.isArray(eventsResult.value)
+          ? eventsResult.value.map(normalizeEvent)
+          : [];
 
-        const proposalList = Array.isArray(proposalsResult.value)
+      const proposalList =
+        proposalsResult.status === 'fulfilled' && Array.isArray(proposalsResult.value)
           ? proposalsResult.value
           : [];
 
-        const onlyAccepted = proposalList
-          .map(normalizeProposal)
-          .filter((proposal) => isAcceptedProposal(proposal.status));
-
-        enrichedAcceptedProposals = await Promise.all(
-          onlyAccepted.map((proposal) => enrichAcceptedProposal(proposal))
-        );
-
-        console.log(
-          'PROPOSTAS ACEITAS COM ARTISTAS E CASAS:',
-          JSON.stringify(enrichedAcceptedProposals, null, 2)
-        );
-
-        setAcceptedProposals(enrichedAcceptedProposals);
-      } else {
-        console.log('ERRO AO BUSCAR PROPOSTAS PUBLICAS:', proposalsResult.reason);
-        setAcceptedProposals([]);
-      }
-
-      if (eventsResult.status === 'fulfilled') {
-        console.log('EVENTOS PUBLICOS - API:', JSON.stringify(eventsResult.value, null, 2));
-
-        const eventList = Array.isArray(eventsResult.value)
-          ? eventsResult.value
-          : [];
-
-        const enrichedEvents = await Promise.all(
-          eventList.map((eventItem) => {
-            const normalizedEvent = normalizeEvent(eventItem);
-            const eventId = getEventId(normalizedEvent);
-
-            const proposalsForEvent = enrichedAcceptedProposals.filter(
-              (proposal) => getProposalEventId(proposal) === eventId
-            );
-
-            return enrichEventWithCasa(normalizedEvent, proposalsForEvent);
-          })
-        );
-
-        console.log(
-          'EVENTOS PUBLICOS - ENRIQUECIDOS COM CASA:',
-          JSON.stringify(enrichedEvents, null, 2)
-        );
-
-        setEvents(enrichedEvents);
-      } else {
+      if (eventsResult.status === 'rejected') {
         console.log('ERRO AO BUSCAR EVENTOS PUBLICOS:', eventsResult.reason);
-        setEvents([]);
+        setError('Nao foi possivel carregar os eventos.');
       }
 
-      if (eventsResult.status === 'rejected' || proposalsResult.status === 'rejected') {
-        setError('Alguns dados nao puderam ser carregados. Puxe para atualizar.');
+      if (proposalsResult.status === 'rejected') {
+        console.log('ERRO AO BUSCAR PROPOSTAS PUBLICAS:', proposalsResult.reason);
+      }
+
+      const enrichedAcceptedProposals = await Promise.all(
+        proposalList
+          .filter((proposal) => isAcceptedStatus(proposal?.status))
+          .map((proposal) => enrichAcceptedProposal(proposal))
+      );
+
+      const proposalsByEventId = enrichedAcceptedProposals.reduce((acc, proposal) => {
+        const eventId = getProposalEventId(proposal);
+
+        if (!eventId) return acc;
+
+        acc[eventId] = acc[eventId] || [];
+        acc[eventId].push(proposal);
+
+        return acc;
+      }, {});
+
+      const enrichedEvents = await Promise.all(
+        eventList.map((eventItem) => {
+          const eventId = getEventId(eventItem);
+          const eventProposals = proposalsByEventId[eventId] || [];
+
+          return enrichEventWithCasa(eventItem, eventProposals);
+        })
+      );
+
+      console.log(
+        'EVENTOS PUBLICOS - ENRIQUECIDOS:',
+        JSON.stringify(enrichedEvents, null, 2)
+      );
+
+      console.log(
+        'PROPOSTAS ACEITAS PUBLICAS - ENRIQUECIDAS:',
+        JSON.stringify(enrichedAcceptedProposals, null, 2)
+      );
+
+      setEvents(enrichedEvents);
+      setAcceptedProposals(enrichedAcceptedProposals);
+
+      if (clientResult.status === 'fulfilled') {
+        const cliente = clientResult.value || {};
+        const rawPreferences = cliente?.preferencias || session?.preferencias || '';
+        const parsedPreferences = parseClientPreferences(rawPreferences);
+
+        console.log('PREFERENCIAS DO CLIENTE - EVENTOS PUBLICOS:', rawPreferences);
+        console.log(
+          'PREFERENCIAS NORMALIZADAS - EVENTOS PUBLICOS:',
+          parsedPreferences
+        );
+
+        setClientPreferences(parsedPreferences);
+      } else {
+        console.log('ERRO AO BUSCAR CLIENTE EM EVENTOS PUBLICOS:', clientResult.reason);
+        setClientPreferences(parseClientPreferences(session?.preferencias || ''));
       }
     } catch (requestError) {
-      console.log('ERRO AO CARREGAR EVENTOS PUBLICOS:', requestError);
+      console.log('ERRO GERAL EM EVENTOS PUBLICOS:', requestError);
 
       setError(requestError?.message || 'Nao foi possivel carregar os eventos.');
       setEvents([]);
@@ -325,7 +490,7 @@ export default function PublicEventsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [clientId, session?.preferencias]);
 
   useEffect(() => {
     loadEvents();
@@ -344,6 +509,25 @@ export default function PublicEventsScreen() {
     }, {});
   }, [acceptedProposals]);
 
+  const preferenceEvents = useMemo(() => {
+    if (!clientPreferences.length) return [];
+
+    return events
+      .filter((eventItem) => eventMatchesClientGenres(eventItem, clientPreferences))
+      .sort((a, b) => {
+        const dateA = parseApiDate(a.data_inicio)?.getTime() || 0;
+        const dateB = parseApiDate(b.data_inicio)?.getTime() || 0;
+
+        return dateA - dateB;
+      });
+  }, [clientPreferences, events]);
+
+  useEffect(() => {
+    if (activeBanner >= preferenceEvents.length) {
+      setActiveBanner(0);
+    }
+  }, [activeBanner, preferenceEvents.length]);
+
   const eventTypes = useMemo(() => {
     const values = events.map(getEventType).filter(Boolean);
     return ['TODOS', ...Array.from(new Set(values))];
@@ -359,20 +543,17 @@ export default function PublicEventsScreen() {
         const formattedDate = eventDate ? eventDate.toISOString().slice(0, 10) : '';
         const eventType = getEventType(eventItem);
 
-        const title = String(eventItem.titulo || '').toLowerCase();
-        const description = String(eventItem.descricao || '').toLowerCase();
-        const local = String(eventItem.local || '').toLowerCase();
-        const casaNome = String(eventItem.casa_nome || '').toLowerCase();
-
         const matchesSearch =
           !normalizedSearch ||
-          title.includes(normalizedSearch) ||
-          description.includes(normalizedSearch) ||
-          local.includes(normalizedSearch) ||
-          casaNome.includes(normalizedSearch);
+          eventItem.titulo.toLowerCase().includes(normalizedSearch) ||
+          eventItem.descricao.toLowerCase().includes(normalizedSearch) ||
+          eventItem.local.toLowerCase().includes(normalizedSearch);
 
         const matchesDate = !dateFilter.trim() || formattedDate === dateFilter.trim();
-        const matchesLocation = !normalizedLocation || local.includes(normalizedLocation);
+
+        const matchesLocation =
+          !normalizedLocation || eventItem.local.toLowerCase().includes(normalizedLocation);
+
         const matchesType = typeFilter === 'TODOS' || eventType === typeFilter;
 
         return matchesSearch && matchesDate && matchesLocation && matchesType;
@@ -387,6 +568,17 @@ export default function PublicEventsScreen() {
   async function handleRefresh() {
     setRefreshing(true);
     await loadEvents();
+  }
+
+  async function handleOpenWhatsApp() {
+    const message = encodeURIComponent(WHATSAPP_MESSAGE);
+    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`;
+
+    try {
+      await Linking.openURL(url);
+    } catch (requestError) {
+      console.log('ERRO AO ABRIR WHATSAPP:', requestError);
+    }
   }
 
   if (loading) {
@@ -445,10 +637,94 @@ export default function PublicEventsScreen() {
           <View style={styles.heroInfo}>
             <Text style={styles.heroTitle}>Eventos disponiveis</Text>
             <Text style={styles.heroSubtitle}>
-              Veja eventos, casas de show e artistas confirmados.
+              Lista carregada diretamente do microservico de eventos.
             </Text>
           </View>
         </View>
+
+        {preferenceEvents.length > 0 ? (
+          <View style={styles.bannerContainer}>
+            <View style={styles.bannerHeader}>
+              <View style={styles.bannerHeaderIcon}>
+                <Ionicons name="sparkles-outline" size={16} color={colors.primary} />
+              </View>
+
+              <View style={styles.bannerHeaderTextBox}>
+                <Text style={styles.bannerSectionTitle}>
+                  De acordo com suas preferências
+                </Text>
+              </View>
+            </View>
+
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={(event) => {
+                const slideSize = event.nativeEvent.layoutMeasurement.width;
+                const index = event.nativeEvent.contentOffset.x / slideSize;
+                const roundIndex = Math.round(index);
+
+                setActiveBanner(roundIndex);
+              }}
+              scrollEventThrottle={16}
+            >
+              {preferenceEvents.map((eventItem) => {
+                const eventId = getEventId(eventItem);
+
+                return (
+                  <TouchableOpacity
+                    key={`banner-${eventId}`}
+                    activeOpacity={0.9}
+                    style={styles.bannerCard}
+                    onPress={() => setSelectedEventId(eventId)}
+                  >
+                    <Image
+                      source={{
+                        uri: eventItem.foto_evento || FALLBACK_EVENT_IMAGE,
+                      }}
+                      style={styles.bannerImage}
+                    />
+
+                    <View style={styles.bannerOverlay}>
+                      <View style={styles.bannerBadge}>
+                        <Text style={styles.bannerBadgeText}>
+                          {getEventType(eventItem)}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.bannerTitle} numberOfLines={2}>
+                        {eventItem.titulo}
+                      </Text>
+
+                      {eventItem.casa_nome ? (
+                        <Text style={styles.bannerHouse} numberOfLines={1}>
+                          {eventItem.casa_nome}
+                        </Text>
+                      ) : null}
+
+                      <Text style={styles.bannerDate}>
+                        {formatDateTime(eventItem.data_inicio)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.pagination}>
+              {preferenceEvents.map((_, index) => (
+                <View
+                  key={`dot-${index}`}
+                  style={[
+                    styles.paginationDot,
+                    activeBanner === index && styles.paginationDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         {error ? (
           <TouchableOpacity style={styles.errorCard} activeOpacity={0.85} onPress={loadEvents}>
@@ -462,7 +738,7 @@ export default function PublicEventsScreen() {
             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Buscar por nome, descricao, casa ou local"
+              placeholder="Buscar por nome, descricao ou local"
               placeholderTextColor={colors.textMuted}
               value={search}
               onChangeText={setSearch}
@@ -470,13 +746,21 @@ export default function PublicEventsScreen() {
           </View>
 
           <View style={styles.filterRow}>
-            <TextInput
+            <TouchableOpacity
               style={styles.filterInput}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.textMuted}
-              value={dateFilter}
-              onChangeText={setDateFilter}
-            />
+              activeOpacity={0.8}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text
+                style={{
+                  color: selectedDate ? colors.text : colors.textMuted,
+                }}
+              >
+                {selectedDate
+                  ? selectedDate.toISOString().split('T')[0]
+                  : 'Selecionar data'}
+              </Text>
+            </TouchableOpacity>
 
             <TextInput
               style={styles.filterInput}
@@ -517,11 +801,11 @@ export default function PublicEventsScreen() {
               const eventId = getEventId(eventItem);
               const isSelected = selectedEventId === eventId;
 
+              const confirmedArtistsFromProposals = proposalsByEventId[eventId] || [];
+
               const confirmedArtistsFromEvent = Array.isArray(eventItem.eventoArtistas)
                 ? eventItem.eventoArtistas.filter(isConfirmedArtist)
                 : [];
-
-              const confirmedArtistsFromProposals = proposalsByEventId[eventId] || [];
 
               const confirmedArtists =
                 confirmedArtistsFromProposals.length > 0
@@ -551,12 +835,12 @@ export default function PublicEventsScreen() {
                       </View>
                     </View>
 
-                    <View style={styles.casaPreviewRow}>
-                      <Ionicons name="business-outline" size={14} color={colors.primary} />
-                      <Text style={styles.casaPreviewText} numberOfLines={1}>
-                        {eventItem.casa_nome || 'Casa de show'}
-                      </Text>
-                    </View>
+                    {eventItem.casa_nome ? (
+                      <View style={styles.metaRow}>
+                        <Ionicons name="business-outline" size={14} color={colors.textSecondary} />
+                        <Text style={styles.metaText}>{eventItem.casa_nome}</Text>
+                      </View>
+                    ) : null}
 
                     <View style={styles.metaRow}>
                       <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
@@ -575,40 +859,37 @@ export default function PublicEventsScreen() {
                     ) : null}
 
                     {isSelected ? (
-                      <View style={styles.artistBox}>
-                        <View style={styles.artistBoxHeader}>
-                          <Ionicons
-                            name="people-circle-outline"
-                            size={17}
-                            color={colors.primary}
-                          />
+                      <>
+                        <View style={styles.artistBox}>
                           <Text style={styles.artistBoxTitle}>Artistas confirmados</Text>
-                        </View>
 
-                        {confirmedArtists.length > 0 ? (
-                          confirmedArtists.map((artistItem, index) => {
-                            const artistName =
-                              artistItem?.artista_nome ||
-                              getArtistNameFromProposal(artistItem) ||
-                              getArtistNameFromObject(artistItem?.artista || artistItem);
-
-                            return (
+                          {confirmedArtists.length > 0 ? (
+                            confirmedArtists.map((artistItem, index) => (
                               <View key={`${eventId}-artist-${index}`} style={styles.artistRow}>
                                 <Ionicons
                                   name="musical-notes-outline"
                                   size={14}
                                   color={colors.primary}
                                 />
-                                <Text style={styles.artistName}>{artistName}</Text>
+                                <Text style={styles.artistName}>{getArtistName(artistItem)}</Text>
                               </View>
-                            );
-                          })
-                        ) : (
-                          <Text style={styles.emptyText}>
-                            Nenhum artista confirmado retornado pela API.
-                          </Text>
-                        )}
-                      </View>
+                            ))
+                          ) : (
+                            <Text style={styles.emptyText}>
+                              Nenhum artista confirmado retornado pela API.
+                            </Text>
+                          )}
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.contactButton}
+                          activeOpacity={0.85}
+                          onPress={handleOpenWhatsApp}
+                        >
+                          <Ionicons name="logo-whatsapp" size={18} color={colors.text} />
+                          <Text style={styles.contactButtonText}>Entrar em contato</Text>
+                        </TouchableOpacity>
+                      </>
                     ) : null}
                   </View>
                 </TouchableOpacity>
@@ -752,11 +1033,13 @@ const styles = StyleSheet.create({
   filterInput: {
     flex: 1,
     minHeight: 44,
+    maxWidth: 150,
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: '#101728',
     paddingHorizontal: spacing.md,
+    justifyContent: 'center',
     color: colors.text,
     fontSize: 14,
   },
@@ -827,24 +1110,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
   },
-  casaPreviewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-    backgroundColor: 'rgba(0, 102, 255, 0.08)',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 102, 255, 0.16)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
-  },
-  casaPreviewText: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: '700',
-    marginLeft: 6,
-    flex: 1,
-  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -867,16 +1132,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingTop: spacing.md,
   },
-  artistBoxHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
   artistBoxTitle: {
     ...typography.bodySmall,
     color: colors.text,
     fontWeight: '700',
-    marginLeft: 6,
+    marginBottom: spacing.sm,
   },
   artistRow: {
     flexDirection: 'row',
@@ -887,6 +1147,21 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginLeft: 6,
+  },
+  contactButton: {
+    minHeight: 44,
+    borderRadius: borderRadius.md,
+    backgroundColor: '#25D366',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    marginTop: spacing.md,
+  },
+  contactButtonText: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '700',
+    marginLeft: 8,
   },
   emptyText: {
     ...typography.bodySmall,
@@ -913,5 +1188,95 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  bannerContainer: {
+    marginBottom: spacing.lg,
+  },
+  bannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  bannerHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(0, 102, 255, 0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  bannerHeaderTextBox: {
+    flex: 1,
+  },
+  bannerSectionTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+  },
+  bannerCard: {
+    width: 340,
+    height: 200,
+    marginRight: spacing.md,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.backgroundCard,
+  },
+  bannerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: spacing.md,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  bannerBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: spacing.sm,
+  },
+  bannerBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  bannerTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  bannerHouse: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  bannerDate: {
+    color: '#ddd',
+    fontSize: 13,
+  },
+  pagination: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+  },
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#555',
+    marginHorizontal: 4,
+  },
+  paginationDotActive: {
+    width: 18,
+    backgroundColor: colors.primary,
   },
 });

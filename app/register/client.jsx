@@ -169,7 +169,7 @@ export default function RegisterClientScreen() {
         senha,
         telefone: normalizePhone(telefone),
         apelido: apelido.trim(),
-        preferencias: selectedGenres.join(';'),
+       preferencias: selectedGenres.join(', '),
         data_nascimento: convertBrazilianDateToIso(dataNascimento.trim()),
       };
 
